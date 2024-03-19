@@ -14,7 +14,7 @@ The Multi Archive module is a versatile Ansible module designed to facilitate th
 
 ### Parameters
 
-- `name`: Path to the file or directory to archive or unarchive.
+- `source`: Path to the file or directory to archive or unarchive.
 - `dest`: Destination path for the archive file or unarchiving operation.
 - `format`: (Optional) Specifies the archive format (`tar.gz`, `tar.bz2`, `zip`). Automatically detected during unarchiving if not provided.
 - `compression`: (Optional) Compression method to use (`gzip`, `pigz`, `none`). Defaults to `none`, which uses the default compression method for the specified format.
@@ -32,7 +32,7 @@ This example shows how to compress a directory into a `tar.gz` archive using `pi
   tasks:
     - name: Compress a directory into tar.gz using pigz
       community.general.multi_archive:
-        name: /path/to/large/directory
+        source: /path/to/large/directory
         dest: /path/to/destination/large_directory_compressed.tar.gz
         format: tar.gz
         compression: pigz
@@ -49,7 +49,7 @@ Although `pigz` is primarily used for compression, this example focuses on the a
   tasks:
     - name: Decompress a tar.gz archive with automatic format detection
       community.general.multi_archive:
-        name: /path/to/destination/large_directory_compressed.tar.gz
+        source: /path/to/destination/large_directory_compressed.tar.gz
         dest: /path/to/unarchive/destination
         state: unarchived
         delete_source: false
@@ -77,7 +77,7 @@ This example demonstrates how you might conditionally use `pigz` if it's availab
 
     - name: Compress a directory using pigz if available, else gzip
       community.general.multi_archive:
-        name: /path/to/directory
+        source: /path/to/directory
         dest: /path/to/destination/directory_compressed.tar.gz
         format: tar.gz
         compression: "{{ 'pigz' if pigz_installed.rc == 0 else 'gzip' }}"
