@@ -15,7 +15,7 @@ def run_command(command):
 
 def archive(module, **kwargs):
     # Zugriff auf die Argumente über kwargs
-    name = kwargs.get('name')
+    name = kwargs.get('source')
     dest = kwargs.get('dest')
     format = kwargs.get('format')
     delete_source = kwargs.get('delete_source', False)  # Standardwert ist False, wenn nicht angegeben
