@@ -23,26 +23,70 @@ The Multi Archive module is a versatile Ansible module designed to facilitate th
 - `include`: (Optional) List of files or patterns to include in the archive.
 - `exclude`: (Optional) List of files or patterns to exclude from the archive.
 
-### Example Playbook
+### Example 1: Compressing a Directory with `pigz`
+
+This example shows how to compress a directory into a `tar.gz` archive using `pigz` for faster compression. This is particularly useful for large directories where compression speed is a concern.
 
 ```yaml
 - hosts: localhost
   tasks:
-    - name: Archive a directory with tar.gz using pigz
+    - name: Compress a directory into tar.gz using pigz
       community.general.multi_archive:
-        name: /path/to/source
-        dest: /path/to/destination/archive.tar.gz
+        name: /path/to/large/directory
+        dest: /path/to/destination/large_directory_compressed.tar.gz
         format: tar.gz
         compression: pigz
         state: archived
         delete_source: false
+```
 
-    - name: Unarchive the tar.gz file
+### Example 2: Decompressing a `tar.gz` Archive with Automatic Detection
+
+Although `pigz` is primarily used for compression, this example focuses on the automatic detection feature of the module during decompression. The module can automatically detect `tar.gz` format and use the appropriate method for decompression.
+
+```yaml
+- hosts: localhost
+  tasks:
+    - name: Decompress a tar.gz archive with automatic format detection
       community.general.multi_archive:
-        name: /path/to/destination/archive.tar.gz
+        name: /path/to/destination/large_directory_compressed.tar.gz
         dest: /path/to/unarchive/destination
         state: unarchived
+        delete_source: false
 ```
+
+### Handling with the Module
+
+The Multi Archive module is designed to handle the inclusion of `pigz` for compression seamlessly. Here's how it integrates with the module and what users should know:
+
+- **Parameter Specification**: To use `pigz` for compression, simply specify `compression: pigz` in your task. The module takes care of the rest, invoking `pigz` for parallel compression of `tar.gz` archives.
+- **Speed Benefits**: Using `pigz` can significantly reduce compression times for large datasets by leveraging multiple CPU cores.
+- **Fallback**: If `pigz` is not available on the system, it's a good practice to ensure that your playbook can gracefully fall back to using standard `gzip` compression. This can be managed via error handling in Ansible or by having a conditional logic based on the availability of `pigz` on the target system.
+
+### Example 3: Conditional Use of `pigz`
+
+This example demonstrates how you might conditionally use `pigz` if it's available, falling back to `gzip` otherwise. This requires a bit more setup, including a task to check for `pigz` availability.
+
+```yaml
+- hosts: localhost
+  tasks:
+    - name: Check for pigz availability
+      command: which pigz
+      register: pigz_installed
+      ignore_errors: true
+
+    - name: Compress a directory using pigz if available, else gzip
+      community.general.multi_archive:
+        name: /path/to/directory
+        dest: /path/to/destination/directory_compressed.tar.gz
+        format: tar.gz
+        compression: "{{ 'pigz' if pigz_installed.rc == 0 else 'gzip' }}"
+        state: archived
+        delete_source: false
+```
+
+By incorporating these practices and examples, users can effectively utilize the Multi Archive module in their Ansible playbooks, taking advantage of `pigz` for improved compression performance where applicable.
+
 
 This module aims to be a go-to solution for managing archives in Ansible playbooks, offering both power and simplicity for handling various file archiving tasks.
 
