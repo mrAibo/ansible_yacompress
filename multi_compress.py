@@ -132,7 +132,7 @@ def detect_format(name, default_format='tar.gz'):
 
 def main():
     module_args = {
-        'name': {'type': 'str', 'required': True},
+        'source': {'type': 'str', 'required': True},
         'dest': {'type': 'str', 'required': True},
         'format': {'type': 'str', 'required': False, 'default': 'tar.gz', 'choices': ['tar.gz', 'tar.bz2', 'zip']},
         'compression': {'type': 'str', 'required': False, 'default': 'none', 'choices': ['gzip', 'pigz', 'none']},
@@ -161,7 +161,7 @@ Beispiel:
   tasks:
     - name: Archive a directory with tar.gz using pigz, with specific includes and excludes
       community.general.multi_archive:
-        name: /path/to/source/directory
+        source: /path/to/source/directory
         dest: /path/to/destination/example_archive.tar.gz
         format: tar.gz
         compression: pigz
@@ -182,14 +182,14 @@ Beispiel:
   tasks:
     - name: Archive a directory into tar.gz using default tar compression
       community.general.multi_archive:
-        name: /path/to/source
+        source: /path/to/source
         dest: /path/to/destination/default_compressed.tar.gz
         format: tar.gz
         state: archived
 
     - name: Archive a directory into tar.bz2 using default bzip2 compression
       community.general.multi_archive:
-        name: /path/to/source
+        source: /path/to/source
         dest: /path/to/destination/default_compressed.tar.bz2
         format: tar.bz2
         state: archived
@@ -206,7 +206,7 @@ Beispiel:
 
     - name: Archive specific files within a directory into tar.gz
       community.general.multi_archive:
-        name: /path/to/source
+        source: /path/to/source
         dest: /path/to/destination/include_specific.tar.gz
         format: tar.gz
         include:
@@ -216,7 +216,7 @@ Beispiel:
 
     - name: Unarchive a tar.gz file using default gzip decompression
       community.general.multi_archive:
-        name: /path/to/destination/default_compressed.tar.gz
+        source: /path/to/destination/default_compressed.tar.gz
         dest: /path/to/unarchive/destination
         state: unarchived
 
@@ -227,7 +227,7 @@ Beispiel:
   tasks:
     - name: Archive a directory into tar.gz using pigz for faster compression
       community.general.multi_archive:
-        name: /path/to/source/directory
+        source: /path/to/source/directory
         dest: /path/to/destination/pigz_compressed.tar.gz
         format: tar.gz
         compression: pigz
@@ -243,7 +243,7 @@ Beispiel:
 
     - name: Archive a directory into tar.gz with pigz, excluding logs
       community.general.multi_archive:
-        name: /path/to/another/source
+        source: /path/to/another/source
         dest: /path/to/destination/pigz_exclude_logs.tar.gz
         format: tar.gz
         compression: pigz
@@ -253,7 +253,7 @@ Beispiel:
 
     - name: Archive specific files within a directory into tar.gz using pigz
       community.general.multi_archive:
-        name: /yet/another/path/to/source
+        source: /yet/another/path/to/source
         dest: /path/to/destination/pigz_include_specific.tar.gz
         format: tar.gz
         compression: pigz
