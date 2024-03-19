@@ -80,7 +80,7 @@ def detect_archive_format(name):
 
 def unarchive(module, **kwargs):
     # Zugriff auf die Argumente über kwargs
-    name = kwargs.get('name')
+    name = kwargs.get('source')
     dest = kwargs.get('dest')
     format = kwargs.get('format', None)  # Standardwert ist None, wenn nicht angegeben
     delete_source = kwargs.get('delete_source', False)  # Standardwert ist False, wenn nicht angegeben
