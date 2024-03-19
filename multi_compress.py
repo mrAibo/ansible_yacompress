@@ -238,7 +238,7 @@ Beispiel:
         name: /path/to/destination/pigz_compressed.tar.gz
         dest: /path/to/unarchive/destination_pigz
         format: tar.gz
-        compression: unpigz
+        compression: pigz
         state: unarchived
 
     - name: Archive a directory into tar.gz with pigz, excluding logs
