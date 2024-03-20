@@ -1,4 +1,136 @@
 #!/usr/bin/python
+
+# Copyright (c) 2024 Aleksej Voronin
+# MIT License
+
+from __future__ import (absolute_import, division, print_function)
+__metaclass__ = type
+
+DOCUMENTATION = r'''
+---
+module: multi_archive
+
+short_description: Archives or unarchives files and directories with optional compression.
+
+version_added: "1.1.5"
+
+description:
+    - This module provides functionality for archiving and unarchiving files and directories.
+    - Supports tar.gz, tar.bz2, and zip formats.
+    - Allows for the use of pigz for parallel gzip compression and decompression, providing performance benefits on multicore systems.
+    - Offers options to include or exclude specific files or patterns.
+    - Can automatically detect the archive format for unarchiving operations.
+
+options:
+    source:
+        description: The source file or directory to archive or unarchive.
+        required: true
+        type: str
+    dest:
+        description: The destination file or directory for the archive or unarchive operation.
+        required: true
+        type: str
+    format:
+        description: The archive format (tar.gz, tar.bz2, zip). For unarchiving, this is optional and will be auto-detected.
+        required: false
+        type: str
+        choices: ['tar.gz', 'tar.bz2', 'zip']
+    compression:
+        description: The compression method (none, gzip, pigz). Defaults to none, which uses the default method based on the format.
+        required: false
+        type: str
+        choices: ['none', 'gzip', 'pigz']
+    state:
+        description: Whether to archive (archived) or unarchive (unarchived) the source.
+        required: true
+        type: str
+        choices: ['archived', 'unarchived']
+    delete_source:
+        description: Whether to delete the source file or directory after archiving or unarchiving.
+        required: false
+        default: false
+        type: bool
+    include:
+        description: List of files or patterns to include in the archive. Only valid for archiving.
+        required: false
+        type: list
+        elements: str
+    exclude:
+        description: List of files or patterns to exclude from the archive. Only valid for archiving.
+        required: false
+        type: list
+        elements: str
+
+author:
+    - Aleksej Voronin (@mrAibo)
+'''
+
+EXAMPLES = r'''
+# Archive a directory with tar.gz using pigz
+- name: Archive directory
+  community.general.multi_archive:
+    source: /path/to/directory
+    dest: /path/to/archive.tar.gz
+    format: tar.gz
+    compression: pigz
+    state: archived
+    delete_source: false
+
+# Unarchive a tar.gz file with automatic format detection
+- name: Unarchive tar.gz
+  community.general.multi_archive:
+    source: /path/to/archive.tar.gz
+    dest: /path/to/directory
+    state: unarchived
+    delete_source: false
+
+# Archive a directory with tar.gz, excluding certain patterns
+- name: Archive a directory with tar.gz, excluding certain patterns
+  community.general.multi_archive:
+    name: /path/to/source
+    dest: /path/to/destination/exclude_specific.tar.gz
+    format: tar.gz
+    exclude:
+      - "*.log"
+      - "*.tmp"
+    state: archived
+
+#  Archive specific files within a directory into tar.gz
+- name: Archive specific files within a directory into tar.gz
+  community.general.multi_archive:
+    source: /path/to/source
+    dest: /path/to/destination/include_specific.tar.gz
+    format: tar.gz
+    include:
+      - "important.txt"
+      - "docs/"
+    state: archived
+     
+'''
+
+RETURN = r'''
+original_source:
+    description: The original source file or directory that was specified.
+    type: str
+    returned: always
+    sample: '/path/to/directory'
+destination:
+    description: The destination file or directory specified for the operation.
+    type: str
+    returned: always
+    sample: '/path/to/archive.tar.gz'
+compression_used:
+    description: The compression method that was used for the operation.
+    type: str
+    returned: when relevant
+    sample: 'pigz'
+format_detected:
+    description: The archive format that was detected for unarchiving.
+    type: str
+    returned: on unarchive if format was auto-detected
+    sample: 'tar.gz'
+'''
+
 # Import required libraries
 import os
 import subprocess
@@ -152,114 +284,3 @@ def main():
 if __name__ == '__main__':
     main()
 
-'''
-Beispiel:
----
-- name: Test the multi_archive module with include and exclude options
-  hosts: localhost
-  gather_facts: no
-  tasks:
-    - name: Archive a directory with tar.gz using pigz, with specific includes and excludes
-      community.general.multi_archive:
-        source: /path/to/source/directory
-        dest: /path/to/destination/example_archive.tar.gz
-        format: tar.gz
-        compression: pigz
-        state: archived
-        delete_source: false
-        include:
-          - "*.txt"  # Include all txt files
-          - "important/"  # Include all files in the 'important' subdirectory
-        exclude:
-          - "*.log"  # Exclude all log files
-          - "temp/"  # Exclude the 'temp' subdirectory
-
-          
----
-- name: Demonstrate the multi_archive module functionalities
-  hosts: localhost
-  gather_facts: no
-  tasks:
-    - name: Archive a directory into tar.gz using default tar compression
-      community.general.multi_archive:
-        source: /path/to/source
-        dest: /path/to/destination/default_compressed.tar.gz
-        format: tar.gz
-        state: archived
-
-    - name: Archive a directory into tar.bz2 using default bzip2 compression
-      community.general.multi_archive:
-        source: /path/to/source
-        dest: /path/to/destination/default_compressed.tar.bz2
-        format: tar.bz2
-        state: archived
-
-    - name: Archive a directory with tar.gz, excluding certain patterns
-      community.general.multi_archive:
-        name: /path/to/source
-        dest: /path/to/destination/exclude_specific.tar.gz
-        format: tar.gz
-        exclude:
-          - "*.log"
-          - "*.tmp"
-        state: archived
-
-    - name: Archive specific files within a directory into tar.gz
-      community.general.multi_archive:
-        source: /path/to/source
-        dest: /path/to/destination/include_specific.tar.gz
-        format: tar.gz
-        include:
-          - "important.txt"
-          - "docs/"
-        state: archived
-
-    - name: Unarchive a tar.gz file using default gzip decompression
-      community.general.multi_archive:
-        source: /path/to/destination/default_compressed.tar.gz
-        dest: /path/to/unarchive/destination
-        state: unarchived
-
----
-- name: Demonstrate the multi_archive module with pigz compression
-  hosts: localhost
-  gather_facts: no
-  tasks:
-    - name: Archive a directory into tar.gz using pigz for faster compression
-      community.general.multi_archive:
-        source: /path/to/source/directory
-        dest: /path/to/destination/pigz_compressed.tar.gz
-        format: tar.gz
-        compression: pigz
-        state: archived
-
-    - name: Unarchive a tar.gz file using pigz for faster decompression
-      community.general.multi_archive:
-        name: /path/to/destination/pigz_compressed.tar.gz
-        dest: /path/to/unarchive/destination_pigz
-        format: tar.gz
-        compression: pigz
-        state: unarchived
-
-    - name: Archive a directory into tar.gz with pigz, excluding logs
-      community.general.multi_archive:
-        source: /path/to/another/source
-        dest: /path/to/destination/pigz_exclude_logs.tar.gz
-        format: tar.gz
-        compression: pigz
-        exclude:
-          - "*.log"
-        state: archived
-
-    - name: Archive specific files within a directory into tar.gz using pigz
-      community.general.multi_archive:
-        source: /yet/another/path/to/source
-        dest: /path/to/destination/pigz_include_specific.tar.gz
-        format: tar.gz
-        compression: pigz
-        include:
-          - "important_data.txt"
-          - "critical_docs/"
-        state: archived
-
-'''
