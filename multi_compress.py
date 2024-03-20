@@ -150,13 +150,13 @@ def archive(module, **kwargs):
     source = kwargs.get('source')
     dest = kwargs.get('dest')
     format = kwargs.get('format')
-    delete_source = kwargs.get('delete_source', False)  # Standardwert ist False, wenn nicht angegeben
-    compression = kwargs.get('compression', 'none')  # Standardwert ist 'none', wenn nicht angegeben
+    delete_source = kwargs.get('delete_source', False)  # Default value is False if not specified
+    compression = kwargs.get('compression', 'none')  # Default value is 'none' if not specified
     include = kwargs.get('include', [])
     exclude = kwargs.get('exclude', [])
     
 #    module.log(msg=f"delete_source is set to {delete_source}")    
-    """Erweitern der Archivierungsfunktion um optionale Kompression."""
+    """Extend the archiving function with optional compression."""
     cmd = "tar"
     
     if format in ["tar.gz", "tar.bz2"]:
@@ -175,7 +175,7 @@ def archive(module, **kwargs):
         else:
             cmd += f" {source}"
     elif format == "zip":
-        # ZIP-Format Logik bleibt unverändert
+        # ZIP format logic remains unchanged
         cmd = f"zip -r {dest} {source}"
     else:
         module.fail_json(msg=f"Unsupported format: {format}")
@@ -211,23 +211,23 @@ def detect_archive_format(name):
 
 
 def unarchive(module, **kwargs):
-    # Zugriff auf die Argumente über kwargs
+    # Access to the arguments via kwargs
     source = kwargs.get('source')
     dest = kwargs.get('dest')
-    format = kwargs.get('format', None)  # Standardwert ist None, wenn nicht angegeben
-    delete_source = kwargs.get('delete_source', False)  # Standardwert ist False, wenn nicht angegeben
-    compression = kwargs.get('compression', 'none')  # Standardwert ist 'none', wenn nicht angegeben
+    format = kwargs.get('format', None)  # Default value is None if not specified
+    delete_source = kwargs.get('delete_source', False)  # Default value is False if not specified
+    compression = kwargs.get('compression', 'none')  # Default value is None if not specified
     
-    # Stellen Sie sicher, dass das Zielverzeichnis existiert
+    # Make sure that the target directory exists
     ensure_directory_exists(dest)
 
-    # Format automatisch erkennen, wenn es nicht angegeben wurde
+    # Automatically recognise format if it has not been specified
     if not format:
         format = detect_archive_format(source)
         if not format:
             module.fail_json(msg="Could not detect archive format. Please specify the format.")
     
-    # Konstruktion des Dearchivierungsbefehls basierend auf dem Format
+    # Construction of the uncompress command based on the format
     cmd = "tar"
     if format == 'tar.gz':
         cmd += " -I pigz" if compression == "pigz" else " -z"
@@ -240,12 +240,12 @@ def unarchive(module, **kwargs):
     
     cmd += f" -xf {source} -C {dest}"
 
-    # Dearchivierungsbefehl ausführen
+    # Execute uncompress command
     success, output = run_command(cmd)
     if not success:
         module.fail_json(msg=f"Failed to unarchive {source}: {output}")
     
-    # Quellarchiv löschen, falls angefordert
+    # Delete source archive, if requested
     if delete_source:
         os.remove(source)
     
