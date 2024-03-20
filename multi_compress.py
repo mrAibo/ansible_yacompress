@@ -41,23 +41,23 @@ def archive(module, **kwargs):
         if include:
             cmd += " " + " ".join(include)
         else:
-            cmd += f" {name}"
+            cmd += f" {source}"
     elif format == "zip":
         # ZIP-Format Logik bleibt unverändert
-        cmd = f"zip -r {dest} {name}"
+        cmd = f"zip -r {dest} {source}"
     else:
         module.fail_json(msg=f"Unsupported format: {format}")
 
     success, output = run_command(cmd)
     if not success:
-        module.fail_json(msg=f"Failed to archive {name}: {output}")
+        module.fail_json(msg=f"Failed to archive {source}: {output}")
     
     module.warn(f"delete_source is set to {delete_source}")
     if delete_source:
-        if os.path.isdir(name):
-            shutil.rmtree(name)
+        if os.path.isdir(source):
+            shutil.rmtree(source)
         else:
-            os.remove(name)
+            os.remove(source)
 
     module.exit_json(changed=True, msg=f"{name} archived to {dest} successfully.")
 
@@ -91,7 +91,7 @@ def unarchive(module, **kwargs):
 
     # Format automatisch erkennen, wenn es nicht angegeben wurde
     if not format:
-        format = detect_archive_format(name)
+        format = detect_archive_format(source)
         if not format:
             module.fail_json(msg="Could not detect archive format. Please specify the format.")
     
@@ -102,20 +102,20 @@ def unarchive(module, **kwargs):
     elif format == 'tar.bz2':
         cmd += " -j"
     elif format == 'zip':
-        cmd = f"unzip {name} -d {dest}"
+        cmd = f"unzip {source} -d {dest}"
     else:
         module.fail_json(msg=f"Unsupported archive format: {format}")
     
-    cmd += f" -xf {name} -C {dest}"
+    cmd += f" -xf {source} -C {dest}"
 
     # Dearchivierungsbefehl ausführen
     success, output = run_command(cmd)
     if not success:
-        module.fail_json(msg=f"Failed to unarchive {name}: {output}")
+        module.fail_json(msg=f"Failed to unarchive {source}: {output}")
     
     # Quellarchiv löschen, falls angefordert
     if delete_source:
-        os.remove(name)
+        os.remove(source)
     
     module.exit_json(changed=True, msg=f"{name} successfully unarchived to {dest}.")
 
