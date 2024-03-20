@@ -80,7 +80,7 @@ This example demonstrates how you might conditionally use `pigz` if it's availab
         source: /path/to/directory
         dest: /path/to/destination/directory_compressed.tar.gz
         format: tar.gz
-        compression: "{{ 'pigz' if pigz_installed.rc == 0 else 'gzip' }}"
+        compression: "{{ 'pigz' if pigz_installed.rc == 0 else 'none' }}"
         state: archived
         delete_source: false
 ```
