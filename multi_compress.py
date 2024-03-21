@@ -1,7 +1,7 @@
 #!/usr/bin/python
 
 # Copyright (c) 2024 Aleksej Voronin
-# GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+# MIT License
 
 from __future__ import (absolute_import, division, print_function)
 __metaclass__ = type
@@ -131,6 +131,7 @@ format_detected:
     sample: 'tar.gz'
 '''
 
+
 # Import required libraries
 import os
 import subprocess
@@ -150,13 +151,13 @@ def archive(module, **kwargs):
     source = kwargs.get('source')
     dest = kwargs.get('dest')
     format = kwargs.get('format')
-    delete_source = kwargs.get('delete_source', False)  # Default value is False if not specified
-    compression = kwargs.get('compression', 'none')  # Default value is 'none' if not specified
+    delete_source = kwargs.get('delete_source', False)  # Standardwert ist False, wenn nicht angegeben
+    compression = kwargs.get('compression', 'none')  # Standardwert ist 'none', wenn nicht angegeben
     include = kwargs.get('include', [])
     exclude = kwargs.get('exclude', [])
     
 #    module.log(msg=f"delete_source is set to {delete_source}")    
-    """Extend the archiving function with optional compression."""
+    """Erweitern der Archivierungsfunktion um optionale Kompression."""
     cmd = "tar"
     
     if format in ["tar.gz", "tar.bz2"]:
@@ -175,7 +176,7 @@ def archive(module, **kwargs):
         else:
             cmd += f" {source}"
     elif format == "zip":
-        # ZIP format logic remains unchanged
+        # ZIP-Format Logik bleibt unverändert
         cmd = f"zip -r {dest} {source}"
     else:
         module.fail_json(msg=f"Unsupported format: {format}")
@@ -191,7 +192,7 @@ def archive(module, **kwargs):
         else:
             os.remove(source)
 
-    module.exit_json(changed=True, msg=f"{name} archived to {dest} successfully.")
+    module.exit_json(changed=True, msg=f"{source} archived to {dest} successfully.")
 
 def ensure_directory_exists(path):
     """Ensure that the destination directory exists."""
@@ -211,45 +212,36 @@ def detect_archive_format(name):
 
 
 def unarchive(module, **kwargs):
-    # Access to the arguments via kwargs
     source = kwargs.get('source')
     dest = kwargs.get('dest')
-    format = kwargs.get('format', None)  # Default value is None if not specified
-    delete_source = kwargs.get('delete_source', False)  # Default value is False if not specified
-    compression = kwargs.get('compression', 'none')  # Default value is None if not specified
+    format = kwargs.get('format', None)  # Standardwert ist None, wenn nicht angegeben
+    delete_source = kwargs.get('delete_source', False)  # Standardwert ist False, wenn nicht angegeben
     
-    # Make sure that the target directory exists
     ensure_directory_exists(dest)
 
-    # Automatically recognise format if it has not been specified
     if not format:
         format = detect_archive_format(source)
         if not format:
             module.fail_json(msg="Could not detect archive format. Please specify the format.")
     
-    # Construction of the uncompress command based on the format
-    cmd = "tar"
-    if format == 'tar.gz':
-        cmd += " -I pigz" if compression == "pigz" else " -z"
-    elif format == 'tar.bz2':
-        cmd += " -j"
-    elif format == 'zip':
-        cmd = f"unzip {source} -d {dest}"
+    if format == 'zip':
+        cmd = f"unzip -o {source} -d {dest}"  # Für ZIP-Archive
+    elif format == 'tar.gz' or format == 'tar.bz2':
+        compression_flag = 'z' if format == 'tar.gz' else 'j'
+        cmd = f"tar -x{compression_flag}f {source} -C {dest}"  # Für tar-Archive
     else:
         module.fail_json(msg=f"Unsupported archive format: {format}")
     
-    cmd += f" -xf {source} -C {dest}"
-
-    # Execute uncompress command
+    # Führen Sie den Dearchivierungsbefehl aus
     success, output = run_command(cmd)
     if not success:
         module.fail_json(msg=f"Failed to unarchive {source}: {output}")
     
-    # Delete source archive, if requested
+    # Löschen Sie das Quellarchiv, falls angefordert
     if delete_source:
         os.remove(source)
     
-    module.exit_json(changed=True, msg=f"{name} successfully unarchived to {dest}.")
+    module.exit_json(changed=True, msg=f"{source} successfully unarchived to {dest}.")
 
 def detect_format(name, default_format='tar.gz'):
     """Detect the archive format from the file extension"""
@@ -283,4 +275,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
