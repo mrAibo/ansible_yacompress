@@ -147,17 +147,17 @@ def run_command(command):
         return (False, e.output.strip())
 
 def archive(module, **kwargs):
-    # Zugriff auf die Argumente über kwargs
+    # Access to the arguments via kwargs
     source = kwargs.get('source')
     dest = kwargs.get('dest')
     format = kwargs.get('format')
-    delete_source = kwargs.get('delete_source', False)  # Standardwert ist False, wenn nicht angegeben
-    compression = kwargs.get('compression', 'none')  # Standardwert ist 'none', wenn nicht angegeben
+    delete_source = kwargs.get('delete_source', False)  # Default value is False if not specified
+    compression = kwargs.get('compression', 'none')  # Default value is 'none' if not specified
     include = kwargs.get('include', [])
     exclude = kwargs.get('exclude', [])
     
 #    module.log(msg=f"delete_source is set to {delete_source}")    
-    """Erweitern der Archivierungsfunktion um optionale Kompression."""
+    """Extend the archiving function with optional compression."""
     cmd = "tar"
     
     if format in ["tar.gz", "tar.bz2"]:
@@ -176,7 +176,7 @@ def archive(module, **kwargs):
         else:
             cmd += f" {source}"
     elif format == "zip":
-        # ZIP-Format Logik bleibt unverändert
+        # ZIP format logic remains unchanged
         cmd = f"zip -r {dest} {source}"
     else:
         module.fail_json(msg=f"Unsupported format: {format}")
@@ -185,7 +185,7 @@ def archive(module, **kwargs):
     if not success:
         module.fail_json(msg=f"Failed to archive {source}: {output}")
     
-    module.warn(f"delete_source is set to {delete_source}")
+#    module.warn(f"delete_source is set to {delete_source}")
     if delete_source:
         if os.path.isdir(source):
             shutil.rmtree(source)
@@ -199,49 +199,58 @@ def ensure_directory_exists(path):
     if not os.path.isdir(path):
         os.makedirs(path, exist_ok=True)
 
-def detect_archive_format(name):
+def detect_archive_format(source):
     """Detect the archive format based on the file extension."""
-    if name.endswith('.tar.gz') or name.endswith('.tgz'):
-        return 'tar.gz'
-    elif name.endswith('.tar.bz2') or name.endswith('.tbz2'):
-        return 'tar.bz2'
-    elif name.endswith('.zip'):
+    if source.endswith('.zip'):
         return 'zip'
+    elif source.endswith('.tar.gz') or source.endswith('.tgz'):
+        return 'tar.gz'
+    elif source.endswith('.tar.bz2') or source.endswith('.tbz'):
+        return 'tar.bz2'
     else:
+        # If no supported format was recognised, return None or an error
         return None
-
 
 def unarchive(module, **kwargs):
     source = kwargs.get('source')
     dest = kwargs.get('dest')
-    format = kwargs.get('format', None)  # Standardwert ist None, wenn nicht angegeben
-    delete_source = kwargs.get('delete_source', False)  # Standardwert ist False, wenn nicht angegeben
+    format = kwargs.get('format', None)
+    delete_source = kwargs.get('delete_source', False)
     
+    # Ensure that the target directory exists
     ensure_directory_exists(dest)
 
+    # Automatically recognise format if not specified
     if not format:
         format = detect_archive_format(source)
-        if not format:
-            module.fail_json(msg="Could not detect archive format. Please specify the format.")
+    
+    cmd = None  # Initialisation of cmd with None
     
     if format == 'zip':
-        cmd = f"unzip -o {source} -d {dest}"  # Für ZIP-Archive
-    elif format == 'tar.gz' or format == 'tar.bz2':
-        compression_flag = 'z' if format == 'tar.gz' else 'j'
-        cmd = f"tar -x{compression_flag}f {source} -C {dest}"  # Für tar-Archive
+        cmd = f"unzip -o '{source}' -d '{dest}'"
+    elif format == 'tar.gz':
+        cmd = f"tar -xzf '{source}' -C '{dest}'"
+    elif format == 'tar.bz2':
+        cmd = f"tar -xjf '{source}' -C '{dest}'"
     else:
         module.fail_json(msg=f"Unsupported archive format: {format}")
+
+    if cmd:  # Check whether cmd has a value before it is used
+        # Log the executed command
+        module.log(msg=f"Executing command: {cmd}")
+        success, output = run_command(cmd)
+        if not success:
+            module.fail_json(msg=f"Failed to unarchive {source}: {output}")
     
-    # Führen Sie den Dearchivierungsbefehl aus
-    success, output = run_command(cmd)
-    if not success:
-        module.fail_json(msg=f"Failed to unarchive {source}: {output}")
+        # Delete the source archive, if requested
+        if delete_source:
+            os.remove(source)
     
-    # Löschen Sie das Quellarchiv, falls angefordert
-    if delete_source:
-        os.remove(source)
-    
-    module.exit_json(changed=True, msg=f"{source} successfully unarchived to {dest}.")
+        module.exit_json(changed=True, msg=f"{source} successfully unarchived to {dest}.")
+    else:
+        module.fail_json(msg="No command was set for unarchiving, this should not happen.")
+
+
 
 def detect_format(name, default_format='tar.gz'):
     """Detect the archive format from the file extension"""
@@ -258,7 +267,8 @@ def main():
     module_args = {
         'source': {'type': 'str', 'required': True},
         'dest': {'type': 'str', 'required': True},
-        'format': {'type': 'str', 'required': False, 'default': 'tar.gz', 'choices': ['tar.gz', 'tar.bz2', 'zip']},
+        'format': {'type': 'str', 'required': False, 'default': None, 'choices': ['tar.gz', 'tar.bz2', 'zip']},
+        # Change: Set 'default' for 'format' to None
         'compression': {'type': 'str', 'required': False, 'default': 'none', 'choices': ['gzip', 'pigz', 'none']},
         'state': {'type': 'str', 'required': True, 'choices': ['archived', 'unarchived']},
         'delete_source': {'type': 'bool', 'required': False, 'default': False},
@@ -267,6 +277,10 @@ def main():
     }
 
     module = AnsibleModule(argument_spec=module_args, supports_check_mode=True)
+
+    # Determine format based on file extension, if not explicitly specified
+    if not module.params['format']:
+        module.params['format'] = detect_archive_format(module.params['source'])
 
     if module.params['state'] == 'archived':
         archive(module, **module.params)
