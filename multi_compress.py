@@ -12,7 +12,7 @@ module: multi_archive
 
 short_description: Archives or unarchives files and directories with optional compression.
 
-version_added: "1.1.5"
+version_added: "1.1.8"
 
 description:
     - This module provides functionality for archiving and unarchiving files and directories.
