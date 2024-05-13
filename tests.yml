@@ -1,0 +1,87 @@
+---
+- name: Test the multi_archive module
+  hosts: localhost
+  gather_facts: no
+  tasks:
+    - name: Archive a directory with tar.gz
+      community.general.multi_archive:
+        source: TESTARCH
+        dest: TESTARCH.tar.gz
+        format: tar.gz
+        compression: pigz
+        state: archived
+        delete_source: false
+
+    - name: Archive a directory into zip format
+      community.general.multi_archive:
+        source: TESTARCH
+        dest: TESTARCH.zip
+        format: zip
+        compression: pigz
+        state: archived
+        delete_source: false
+
+    - name: Unarchive a tar.gz file
+      community.general.multi_archive:
+        source: TESTARCH.tar.gz
+        dest: TESTARCHtargz
+        state: unarchived
+        delete_source: false
+
+    - name: Unarchive a zip file
+      community.general.multi_archive:
+        source: TESTARCH.zip
+        dest: TESTARCHzip
+        state: unarchived
+        delete_source: false
+
+    - name: Archive a directory into tar.bz2 format
+      community.general.multi_archive:
+        source: TESTARCH
+        dest: TESTARCH.tar.bz2
+        format: tar.bz2
+        state: archived
+        delete_source: false
+
+    - name: Unarchive a tar.bz2 file
+      community.general.multi_archive:
+        source: TESTARCH.tar.bz2
+        dest: TESTARCHtarbz2
+        state: unarchived
+        delete_source: false
+
+    - name: Archive a directory excluding specific files
+      community.general.multi_archive:
+        source: TESTARCH
+        dest: TESTARCH_no_logs.tar.gz
+        format: tar.gz
+        exclude:
+          - "*.ini"
+        state: archived
+        delete_source: false
+
+    - name: Archive a directory including only specific files
+      community.general.multi_archive:
+        source: TESTARCH
+        dest: TESTARCH_only_txt.tar.gz
+        format: tar.gz
+        include:
+          - "*.yml"
+        state: archived
+        delete_source: false
+
+    - name: Verify idempotence by archiving again
+      community.general.multi_archive:
+        source: TESTARCH
+        dest: TESTARCH.tar.gz
+        format: tar.gz
+        state: archived
+        delete_source: false
+
+    - name: Archive and delete the source directory
+      community.general.multi_archive:
+        source: TESTARCH_DELETE
+        dest: TESTARCH_delete_test.tar.gz
+        format: tar.gz
+        state: archived
+        delete_source: true
