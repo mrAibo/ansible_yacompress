@@ -17,9 +17,9 @@ version_added: "1.1.8"
 description:
     - Archives and unarchives files and directories.
     - Supports tar.gz, tar.bz2, and zip formats.
-    - Uses pigz for parallel gzip compression when compression=pigz.
+    - Uses pigz for parallel gzip when compression=pigz (tar.gz only).
     - Includes/excludes specific files or patterns (archiving only).
-    - Auto-detects archive format on unarchive.
+    - Auto-detects format from extension on unarchive, and from dest on archive.
 
 options:
     source:
@@ -31,12 +31,12 @@ options:
         required: true
         type: str
     format:
-        description: Archive format. Optional on unarchive (auto-detected from extension).
+        description: Archive format. Optional; auto-detected from dest (archive) or source (unarchive) extension.
         required: false
         type: str
         choices: ['tar.gz', 'tar.bz2', 'zip']
     compression:
-        description: Compression for tar.gz. 'gzip' single-threaded, 'pigz' parallel, 'none' format default.
+        description: Compression for tar.gz ('gzip' single-thread, 'pigz' parallel). Ignored for tar.bz2/zip.
         required: false
         type: str
         choices: ['none', 'gzip', 'pigz']
@@ -72,7 +72,6 @@ EXAMPLES = r'''
   multi_archive:
     source: /path/to/directory
     dest: /path/to/archive.tar.gz
-    format: tar.gz
     compression: pigz
     state: archived
 
@@ -88,7 +87,6 @@ EXAMPLES = r'''
   multi_archive:
     source: /path/to/source
     dest: /path/to/destination/exclude_specific.tar.gz
-    format: tar.gz
     exclude:
       - "*.log"
       - "*.tmp"
@@ -99,7 +97,6 @@ EXAMPLES = r'''
   multi_archive:
     source: /path/to/source
     dest: /path/to/destination/include_specific.tar.gz
-    format: tar.gz
     include:
       - "important.txt"
       - "docs/"
@@ -118,14 +115,14 @@ destination:
     returned: always
     sample: '/path/to/archive.tar.gz'
 compression_used:
-    description: Compression method used.
+    description: Compression method actually applied.
     type: str
-    returned: when relevant
+    returned: on archive
     sample: 'pigz'
 format_detected:
-    description: Format detected on unarchive.
+    description: Format detected from extension.
     type: str
-    returned: on unarchive if format was auto-detected
+    returned: when format was auto-detected
     sample: 'tar.gz'
 '''
 
@@ -154,15 +151,29 @@ def _ensure_parent(path):
         os.makedirs(parent, exist_ok=True)
 
 
+def detect_archive_format(path):
+    if path.endswith('.zip'):
+        return 'zip'
+    if path.endswith('.tar.gz') or path.endswith('.tgz'):
+        return 'tar.gz'
+    if path.endswith('.tar.bz2') or path.endswith('.tbz'):
+        return 'tar.bz2'
+    return None
+
+
 def _build_archive_command(source, dest, fmt, compression, include, exclude, module):
     if fmt == 'tar.gz':
         comp = ['-I', 'pigz'] if compression == 'pigz' else ['-z']
+        used = 'pigz' if compression == 'pigz' else 'gzip'
     elif fmt == 'tar.bz2':
         comp = ['-j']
+        used = 'bzip2'
     elif fmt == 'zip':
         comp = []
+        used = 'zip'
     else:
         module.fail_json(msg="Unsupported format: %s" % fmt)
+        return
 
     if fmt in ('tar.gz', 'tar.bz2'):
         cmd = ['tar'] + comp + ['-cf', dest]
@@ -178,12 +189,14 @@ def _build_archive_command(source, dest, fmt, compression, include, exclude, mod
         else:
             cmd.append(source)
     else:  # zip
+        # ponytail: -i patterns are matched against stored paths; for absolute
+        # source include items may need the source prefix. Known ceiling.
         cmd = ['zip', '-r', dest, source]
         for p in exclude:
             cmd += ['-x', p]
         for p in include:
             cmd += ['-i', p]
-    return cmd
+    return cmd, used
 
 
 def _unarchive_command(source, dest, fmt):
@@ -196,44 +209,48 @@ def _unarchive_command(source, dest, fmt):
     return None
 
 
-def detect_archive_format(source):
-    if source.endswith('.zip'):
-        return 'zip'
-    if source.endswith('.tar.gz') or source.endswith('.tgz'):
-        return 'tar.gz'
-    if source.endswith('.tar.bz2') or source.endswith('.tbz'):
-        return 'tar.bz2'
-    return None
-
-
 def archive(module, **params):
     source = params['source']
     dest = params['dest']
+    fmt = params['format']
+    if params['compression'] != 'none' and fmt != 'tar.gz':
+        module.fail_json(msg="compression='%s' only applies to format=tar.gz (got '%s')."
+                             % (params['compression'], fmt))
     _ensure_parent(dest)
-    cmd = _build_archive_command(source, dest, params['format'], params['compression'],
-                                 params['include'], params['exclude'], module)
+    cmd, used = _build_archive_command(source, dest, fmt, params['compression'],
+                                       params['include'], params['exclude'], module)
     if module.check_mode:
-        module.exit_json(changed=True, msg="(check mode) would archive %s -> %s" % (source, dest))
+        module.exit_json(changed=True, original_source=source, destination=dest,
+                         compression_used=used,
+                         msg="(check mode) would archive %s -> %s" % (source, dest))
     _run(module, cmd)
     if params['delete_source']:
         _delete(source)
-    module.exit_json(changed=True, msg="%s archived to %s" % (source, dest))
+    module.exit_json(changed=True, original_source=source, destination=dest,
+                     compression_used=used, msg="%s archived to %s" % (source, dest))
 
 
 def unarchive(module, **params):
     source = params['source']
     dest = params['dest']
+    detected = params['format'] is None
     fmt = params['format'] or detect_archive_format(source)
     if not fmt:
         module.fail_json(msg="Could not detect format for %s; set 'format' explicitly" % source)
+    if params['include'] or params['exclude']:
+        module.warn("include/exclude are ignored on unarchive.")
     _ensure_parent(dest)
     cmd = _unarchive_command(source, dest, fmt)
     if module.check_mode:
-        module.exit_json(changed=True, msg="(check mode) would unarchive %s -> %s" % (source, dest))
+        module.exit_json(changed=True, original_source=source, destination=dest,
+                         format_detected=fmt if detected else None,
+                         msg="(check mode) would unarchive %s -> %s" % (source, dest))
     _run(module, cmd)
     if params['delete_source']:
         _delete(source)
-    module.exit_json(changed=True, msg="%s unarchived to %s" % (source, dest))
+    module.exit_json(changed=True, original_source=source, destination=dest,
+                     format_detected=fmt if detected else None,
+                     msg="%s unarchived to %s" % (source, dest))
 
 
 def main():
@@ -253,13 +270,17 @@ def main():
         supports_check_mode=True,
     )
 
-    if not module.params['format']:
-        module.params['format'] = detect_archive_format(module.params['source'])
+    p = module.params
+    if not p['format']:
+        # ponytail: archive infers from dest, unarchive from source
+        p['format'] = detect_archive_format(p['dest'] if p['state'] == 'archived' else p['source'])
+        if not p['format']:
+            module.fail_json(msg="Cannot detect format from extension; set 'format' explicitly.")
 
-    if module.params['state'] == 'archived':
-        archive(module, **module.params)
+    if p['state'] == 'archived':
+        archive(module, **p)
     else:
-        unarchive(module, **module.params)
+        unarchive(module, **p)
 
 
 if __name__ == '__main__':
