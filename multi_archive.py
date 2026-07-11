@@ -239,7 +239,9 @@ def unarchive(module, **params):
         module.fail_json(msg="Could not detect format for %s; set 'format' explicitly" % source)
     if params['include'] or params['exclude']:
         module.warn("include/exclude are ignored on unarchive.")
-    _ensure_parent(dest)
+    # ponytail: unarchive dest is a directory, must exist for tar -C
+    if not os.path.isdir(dest):
+        os.makedirs(dest, exist_ok=True)
     cmd = _unarchive_command(source, dest, fmt)
     if module.check_mode:
         module.exit_json(changed=True, original_source=source, destination=dest,
