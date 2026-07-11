@@ -15,48 +15,49 @@ short_description: Archives or unarchives files and directories with optional co
 version_added: "1.1.8"
 
 description:
-    - This module provides functionality for archiving and unarchiving files and directories.
+    - Archives and unarchives files and directories.
     - Supports tar.gz, tar.bz2, and zip formats.
-    - Allows for the use of pigz for parallel gzip compression and decompression, providing performance benefits on multicore systems.
-    - Offers options to include or exclude specific files or patterns.
-    - Can automatically detect the archive format for unarchiving operations.
+    - Uses pigz for parallel gzip compression when compression=pigz.
+    - Includes/excludes specific files or patterns (archiving only).
+    - Auto-detects archive format on unarchive.
 
 options:
     source:
-        description: The source file or directory to archive or unarchive.
+        description: Source file or directory to archive or unarchive.
         required: true
         type: str
     dest:
-        description: The destination file or directory for the archive or unarchive operation.
+        description: Destination file or directory for the operation.
         required: true
         type: str
     format:
-        description: The archive format (tar.gz, tar.bz2, zip). For unarchiving, this is optional and will be auto-detected.
+        description: Archive format. Optional on unarchive (auto-detected from extension).
         required: false
         type: str
         choices: ['tar.gz', 'tar.bz2', 'zip']
     compression:
-        description: The compression method (none, gzip, pigz). Defaults to none, which uses the default method based on the format.
+        description: Compression for tar.gz. 'gzip' single-threaded, 'pigz' parallel, 'none' format default.
         required: false
         type: str
         choices: ['none', 'gzip', 'pigz']
+        default: none
     state:
-        description: Whether to archive (archived) or unarchive (unarchived) the source.
+        description: archived = archive, unarchived = extract.
         required: true
         type: str
         choices: ['archived', 'unarchived']
     delete_source:
-        description: Whether to delete the source file or directory after archiving or unarchiving.
+        description: Remove source after a successful operation.
         required: false
         default: false
         type: bool
     include:
-        description: List of files or patterns to include in the archive. Only valid for archiving.
+        description: Only archive these files/patterns (archiving only).
         required: false
         type: list
         elements: str
     exclude:
-        description: List of files or patterns to exclude from the archive. Only valid for archiving.
+        description: Skip these files/patterns (archiving only).
         required: false
         type: list
         elements: str
@@ -68,26 +69,24 @@ author:
 EXAMPLES = r'''
 # Archive a directory with tar.gz using pigz
 - name: Archive directory
-  community.general.multi_archive:
+  multi_archive:
     source: /path/to/directory
     dest: /path/to/archive.tar.gz
     format: tar.gz
     compression: pigz
     state: archived
-    delete_source: false
 
-# Unarchive a tar.gz file with automatic format detection
-- name: Unarchive tar.gz
-  community.general.multi_archive:
+# Unarchive with auto-detected format
+- name: Unarchive
+  multi_archive:
     source: /path/to/archive.tar.gz
     dest: /path/to/directory
     state: unarchived
-    delete_source: false
 
-# Archive a directory with tar.gz, excluding certain patterns
-- name: Archive a directory with tar.gz, excluding certain patterns
-  community.general.multi_archive:
-    name: /path/to/source
+# Archive excluding patterns
+- name: Archive with excludes
+  multi_archive:
+    source: /path/to/source
     dest: /path/to/destination/exclude_specific.tar.gz
     format: tar.gz
     exclude:
@@ -95,9 +94,9 @@ EXAMPLES = r'''
       - "*.tmp"
     state: archived
 
-#  Archive specific files within a directory into tar.gz
-- name: Archive specific files within a directory into tar.gz
-  community.general.multi_archive:
+# Archive only specific files
+- name: Archive specific files
+  multi_archive:
     source: /path/to/source
     dest: /path/to/destination/include_specific.tar.gz
     format: tar.gz
@@ -105,223 +104,155 @@ EXAMPLES = r'''
       - "important.txt"
       - "docs/"
     state: archived
-     
 '''
 
 RETURN = r'''
 original_source:
-    description: The original source file or directory that was specified.
+    description: Source path.
     type: str
     returned: always
     sample: '/path/to/directory'
 destination:
-    description: The destination file or directory specified for the operation.
+    description: Destination path.
     type: str
     returned: always
     sample: '/path/to/archive.tar.gz'
 compression_used:
-    description: The compression method that was used for the operation.
+    description: Compression method used.
     type: str
     returned: when relevant
     sample: 'pigz'
 format_detected:
-    description: The archive format that was detected for unarchiving.
+    description: Format detected on unarchive.
     type: str
     returned: on unarchive if format was auto-detected
     sample: 'tar.gz'
 '''
 
-
-# Import required libraries
 import os
-import subprocess
 import shutil
 from ansible.module_utils.basic import AnsibleModule
 
-def run_command(command):
-    """Run shell command and return the output"""
-    try:
-        output = subprocess.check_output(command, shell=True, stderr=subprocess.STDOUT, universal_newlines=True)
-        return (True, output.strip())
-    except subprocess.CalledProcessError as e:
-        error_msg = f"Command '{command}' failed with error: {e.output.strip()}"
-        return (False, error_msg)
 
-def archive(module, **kwargs):
-    # Access to the arguments via kwargs
-    source = kwargs.get('source')
-    dest = kwargs.get('dest')
-    format = kwargs.get('format')
-    delete_source = kwargs.get('delete_source', False)  # Default value is False if not specified
-    compression = kwargs.get('compression', 'none')  # Default value is 'none' if not specified
-    include = kwargs.get('include', [])
-    exclude = kwargs.get('exclude', [])
-    
-    cmd = _build_archive_command(source, dest, format, compression, include, exclude, module)
+def _run(module, cmd):
+    rc, out, err = module.run_command(cmd, check_rc=False)
+    if rc != 0:
+        module.fail_json(msg="Command failed: %s\n%s" % (' '.join(cmd), err or out))
+    return out
 
-    success, output = run_command(cmd)
-    if not success:
-        module.fail_json(msg=output) # Use the message from run_command directly
-    
-#    module.warn(f"delete_source is set to {delete_source}")
-    if delete_source:
-        if os.path.isdir(source):
-            shutil.rmtree(source)
-        else:
-            os.remove(source)
 
-    module.exit_json(changed=True, msg=f"{source} archived to {dest} successfully.")
-
-def _build_archive_command(source, dest, format, compression, include, exclude, module):
-    """Builds the archive command based on the provided parameters."""
-    cmd = "tar"
-    if format in ["tar.gz", "tar.bz2"]:
-        if format == "tar.gz":
-            cmd += " -z" if compression == "none" else " -I pigz"
-        elif format == "tar.bz2":
-            cmd += " -j"
-        
-        cmd += f" -cf {dest}"
-        
-        if exclude:
-            for pattern in exclude:
-                cmd += f" --exclude='{pattern}'"
-        if include:
-            # If include is specified, archive only these files/dirs
-            # Ensure that source is part of the path for included items if they are relative
-            base_dir_cmd = f" -C {os.path.dirname(source)}" if not os.path.isdir(source) else f" -C {source}"
-            # Correctly handle if source itself is a directory and included items are relative to it
-            if os.path.isdir(source) and include:
-                 # We change directory to source, so include paths should be relative to source
-                cmd_include_list = []
-                for item in include:
-                    # Remove source prefix if present, as -C handles it
-                    item_path = item if not item.startswith(source) else os.path.relpath(item, source)
-                    cmd_include_list.append(f"'{item_path}'")
-                cmd += f" -C {source} " + " ".join(cmd_include_list)
-            else: # source is a file or include paths are absolute
-                cmd += " " + " ".join([f"'{i}'" for i in include])
-
-        else: # No include list, archive the source directly
-            # Need to handle if source is a directory or file correctly
-            if os.path.isdir(source):
-                cmd += f" -C {os.path.dirname(source)} {os.path.basename(source)}"
-            else: # source is a file
-                cmd += f" {source}"
-
-    elif format == "zip":
-        # ZIP format logic
-        # For zip, if source is a directory, items in 'include' should be relative to 'source'.
-        # If source is a file, 'include' is not typically used in this manner directly with 'zip' cmd.
-        # This part might need adjustment based on how 'include' is intended to work with 'zip'.
-        # Assuming 'include' is for specific files within 'source' directory for zip as well.
-        if include:
-            # Complex include logic for zip might require pre-processing of file list
-            # or zipping from a directory containing only included files.
-            # Current implementation directly passes source, which might not respect 'include' for zip.
-            # For simplicity, this example keeps existing zip command structure.
-            # A more robust solution might involve creating a temporary dir with included files.
-            # module.warn("The 'include' parameter with 'zip' format might not work as expected without additional logic to select files.")
-            # Simplified: assuming 'source' is the primary target, 'include' might be secondary or context-dependent.
-            # The command below primarily archives 'source'. 'include' isn't directly used in it.
-            cmd = f"zip -r {dest} {source}" # This does not use 'include' or 'exclude' directly in zip command.
-            # To support include/exclude with zip, one might need to list files explicitly or use find combined with zip.
-        else:
-            cmd = f"zip -r {dest} {source}"
-        if exclude:
-             # Add exclude patterns for zip
-            for pattern in exclude:
-                cmd += f" -x '{pattern}'"
-
+def _delete(path):
+    if os.path.isdir(path) and not os.path.islink(path):
+        shutil.rmtree(path)
     else:
-        module.fail_json(msg=f"Unsupported format: {format}")
+        os.remove(path)
+
+
+def _ensure_parent(path):
+    parent = os.path.dirname(path)
+    if parent and not os.path.isdir(parent):
+        os.makedirs(parent, exist_ok=True)
+
+
+def _build_archive_command(source, dest, fmt, compression, include, exclude, module):
+    if fmt == 'tar.gz':
+        comp = ['-I', 'pigz'] if compression == 'pigz' else ['-z']
+    elif fmt == 'tar.bz2':
+        comp = ['-j']
+    elif fmt == 'zip':
+        comp = []
+    else:
+        module.fail_json(msg="Unsupported format: %s" % fmt)
+
+    if fmt in ('tar.gz', 'tar.bz2'):
+        cmd = ['tar'] + comp + ['-cf', dest]
+        for p in exclude:
+            cmd += ['--exclude', p]
+        if include:
+            base = source if os.path.isdir(source) else os.path.dirname(source)
+            cmd += ['-C', base]
+            for item in include:
+                cmd.append(item if not item.startswith(source) else os.path.relpath(item, base))
+        elif os.path.isdir(source):
+            cmd += ['-C', os.path.dirname(source), os.path.basename(source)]
+        else:
+            cmd.append(source)
+    else:  # zip
+        cmd = ['zip', '-r', dest, source]
+        for p in exclude:
+            cmd += ['-x', p]
+        for p in include:
+            cmd += ['-i', p]
     return cmd
 
-def ensure_directory_exists(path):
-    """Ensure that the destination directory exists."""
-    if not os.path.isdir(path):
-        os.makedirs(path, exist_ok=True)
+
+def _unarchive_command(source, dest, fmt):
+    if fmt == 'zip':
+        return ['unzip', '-o', source, '-d', dest]
+    if fmt == 'tar.gz':
+        return ['tar', '-xzf', source, '-C', dest]
+    if fmt == 'tar.bz2':
+        return ['tar', '-xjf', source, '-C', dest]
+    return None
+
 
 def detect_archive_format(source):
-    """Detect the archive format based on the file extension."""
     if source.endswith('.zip'):
         return 'zip'
-    elif source.endswith('.tar.gz') or source.endswith('.tgz'):
+    if source.endswith('.tar.gz') or source.endswith('.tgz'):
         return 'tar.gz'
-    elif source.endswith('.tar.bz2') or source.endswith('.tbz'):
+    if source.endswith('.tar.bz2') or source.endswith('.tbz'):
         return 'tar.bz2'
-    else:
-        # If no supported format was recognised, return None or an error
-        return None
+    return None
 
-def unarchive(module, **kwargs):
-    source = kwargs.get('source')
-    dest = kwargs.get('dest')
-    format = kwargs.get('format', None)
-    delete_source = kwargs.get('delete_source', False)
-    
-    # Ensure that the target directory exists
-    ensure_directory_exists(dest)
 
-    # Automatically recognise format if not specified
-    if not format:
-        format = detect_archive_format(source)
-    
-    cmd = None  # Initialisation of cmd with None
-    
-    if format == 'zip':
-        cmd = f"unzip -o '{source}' -d '{dest}'"
-    elif format == 'tar.gz':
-        cmd = f"tar -xzf '{source}' -C '{dest}'"
-    elif format == 'tar.bz2':
-        cmd = f"tar -xjf '{source}' -C '{dest}'"
-    else:
-        module.fail_json(msg=f"Unsupported archive format: {format}")
+def archive(module, **params):
+    source = params['source']
+    dest = params['dest']
+    _ensure_parent(dest)
+    cmd = _build_archive_command(source, dest, params['format'], params['compression'],
+                                 params['include'], params['exclude'], module)
+    if module.check_mode:
+        module.exit_json(changed=True, msg="(check mode) would archive %s -> %s" % (source, dest))
+    _run(module, cmd)
+    if params['delete_source']:
+        _delete(source)
+    module.exit_json(changed=True, msg="%s archived to %s" % (source, dest))
 
-    if cmd:  # Check whether cmd has a value before it is used
-        # Log the executed command
-        module.log(msg=f"Executing command: {cmd}")
-        success, output = run_command(cmd)
-        if not success:
-            module.fail_json(msg=f"Failed to unarchive {source}: {output}")
-    
-        # Delete the source archive, if requested
-        if delete_source:
-            os.remove(source)
-    
-        module.exit_json(changed=True, msg=f"{source} successfully unarchived to {dest}.")
-    else:
-        module.fail_json(msg="No command was set for unarchiving, this should not happen.")
 
-def _build_unarchive_command(source, dest, format, module):
-    """Builds the unarchive command based on the provided parameters."""
-    cmd = None
-    if format == 'zip':
-        cmd = f"unzip -o '{source}' -d '{dest}'"
-    elif format == 'tar.gz':
-        cmd = f"tar -xzf '{source}' -C '{dest}'"
-    elif format == 'tar.bz2':
-        cmd = f"tar -xjf '{source}' -C '{dest}'"
-    else:
-        module.fail_json(msg=f"Unsupported archive format: {format}")
-    return cmd
+def unarchive(module, **params):
+    source = params['source']
+    dest = params['dest']
+    fmt = params['format'] or detect_archive_format(source)
+    if not fmt:
+        module.fail_json(msg="Could not detect format for %s; set 'format' explicitly" % source)
+    _ensure_parent(dest)
+    cmd = _unarchive_command(source, dest, fmt)
+    if module.check_mode:
+        module.exit_json(changed=True, msg="(check mode) would unarchive %s -> %s" % (source, dest))
+    _run(module, cmd)
+    if params['delete_source']:
+        _delete(source)
+    module.exit_json(changed=True, msg="%s unarchived to %s" % (source, dest))
+
 
 def main():
-    module_args = {
-        'source': {'type': 'str', 'required': True},
-        'dest': {'type': 'str', 'required': True},
-        'format': {'type': 'str', 'required': False, 'default': None, 'choices': ['tar.gz', 'tar.bz2', 'zip']},
-        # Change: Set 'default' for 'format' to None
-        'compression': {'type': 'str', 'required': False, 'default': 'none', 'choices': ['gzip', 'pigz', 'none']},
-        'state': {'type': 'str', 'required': True, 'choices': ['archived', 'unarchived']},
-        'delete_source': {'type': 'bool', 'required': False, 'default': False},
-        'include': {'type': 'list', 'elements': 'str', 'default': []},
-        'exclude': {'type': 'list', 'elements': 'str', 'default': []},
-    }
+    module = AnsibleModule(
+        argument_spec={
+            'source': {'type': 'str', 'required': True},
+            'dest': {'type': 'str', 'required': True},
+            'format': {'type': 'str', 'required': False, 'default': None,
+                       'choices': ['tar.gz', 'tar.bz2', 'zip']},
+            'compression': {'type': 'str', 'required': False, 'default': 'none',
+                            'choices': ['gzip', 'pigz', 'none']},
+            'state': {'type': 'str', 'required': True, 'choices': ['archived', 'unarchived']},
+            'delete_source': {'type': 'bool', 'required': False, 'default': False},
+            'include': {'type': 'list', 'elements': 'str', 'default': []},
+            'exclude': {'type': 'list', 'elements': 'str', 'default': []},
+        },
+        supports_check_mode=True,
+    )
 
-    module = AnsibleModule(argument_spec=module_args, supports_check_mode=True)
-
-    # Determine format based on file extension, if not explicitly specified
     if not module.params['format']:
         module.params['format'] = detect_archive_format(module.params['source'])
 
@@ -329,6 +260,7 @@ def main():
         archive(module, **module.params)
     else:
         unarchive(module, **module.params)
+
 
 if __name__ == '__main__':
     main()
