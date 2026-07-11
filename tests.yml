@@ -309,50 +309,8 @@
       ansible.builtin.file:
         path: "{{ base_test_dir }}"
         state: absent
-      # Always run cleanup, even if tests fail, but be careful with this in real CI.
-      # For this exercise, it's fine.
-      # when: always
-      # The 'always' condition isn't directly available for post_tasks in this manner.
-      # Cleanup will run if playbook completes successfully or if explicitly handled with blocks/rescue.
-      # For simplicity, this cleanup runs on successful completion.
-      # If a task fails mid-way, this might not run without specific error handling.
       changed_when: false
-      ignore_errors: true # To ensure cleanup attempts even if some files are missing
+      ignore_errors: true
 
-# To run this playbook:
-# 1. Ensure you have the community.general collection: ansible-galaxy collection install community.general
-# 2. Save this as tests.yml
-# 3. Execute: ansible-playbook tests.yml
-#
-# Note on idempotence:
-# The current multi_archive module might report 'changed=True' for archiving even if the destination archive
-# already exists and is identical. True idempotence would require checking if the destination archive
-# needs to be (re)created. For unarchiving, it typically overwrites, so 'changed=True' is common unless
-# checks are made if contents are already identical (which is complex).
-# The idempotence tests here are basic and might need adjustment based on module's exact behavior.
-# The provided module code doesn't seem to have advanced idempotency checks.
-# It will likely report changed=true if an archive operation is performed, even if the file exists.
-# Similarly for unarchive.
-# For the purpose of this exercise, we'll assume this behavior.
-# A more robust idempotency check for archiving would involve:
-# 1. Creating an archive.
-# 2. Running the archive task again.
-# 3. Asserting changed is false.
-# This requires the module to be truly idempotent.
-# The current code for `archive` calls `run_command` which creates the archive. If the archive
-# already exists, `tar` or `zip` might overwrite it, and the module reports changed.
-# Thus, the idempotence tests included might fail if the module isn't designed for this.
-# I've kept the basic structure; if they fail, it points to the module's behavior.
-#
-# The `delete_source: true` test for archiving will make the original `source_dir_delete` unavailable
-# for subsequent tests if not careful. This is handled by using a dedicated directory.
-#
-# The include/exclude verification is basic (archive exists). Deeper verification would mean
-# unarchiving the created archive and checking its contents file by file. This is more involved
-# and can be added as a future improvement if required.
-# For example, for 'include':
-#   - unarchive "{{ archive_dest_dir }}/archive_include.tar.gz" to a temp location
-#   - stat "{{ temp_location }}/source_dir/file1.txt" (should exist)
-#   - stat "{{ temp_location }}/source_dir/subdir/file3.ini" (should exist)
-#   - stat "{{ temp_location }}/source_dir/file2.log" (should NOT exist)
-# And similar for 'exclude'.
+# To run: ansible-playbook tests.yml  (module is found via ANSIBLE_LIBRARY=. or local library/)
+
