@@ -189,8 +189,7 @@ def _build_archive_command(source, dest, fmt, compression, include, exclude, mod
         else:
             cmd.append(source)
     else:  # zip
-        # ponytail: -i patterns are matched against stored paths; for absolute
-        # source include items may need the source prefix. Known ceiling.
+        # ponytail: -i patterns matched against stored paths; absolute include needs source prefix. Known ceiling.
         cmd = ['zip', '-r', dest, source]
         for p in exclude:
             cmd += ['-x', p]
@@ -223,10 +222,11 @@ def archive(module, **params):
         module.exit_json(changed=True, original_source=source, destination=dest,
                          compression_used=used,
                          msg="(check mode) would archive %s -> %s" % (source, dest))
+    changed = not os.path.exists(dest)
     _run(module, cmd)
     if params['delete_source']:
         _delete(source)
-    module.exit_json(changed=True, original_source=source, destination=dest,
+    module.exit_json(changed=changed, original_source=source, destination=dest,
                      compression_used=used, msg="%s archived to %s" % (source, dest))
 
 
@@ -245,10 +245,11 @@ def unarchive(module, **params):
         module.exit_json(changed=True, original_source=source, destination=dest,
                          format_detected=fmt if detected else None,
                          msg="(check mode) would unarchive %s -> %s" % (source, dest))
+    changed = not (os.path.isdir(dest) and os.listdir(dest))
     _run(module, cmd)
     if params['delete_source']:
         _delete(source)
-    module.exit_json(changed=True, original_source=source, destination=dest,
+    module.exit_json(changed=changed, original_source=source, destination=dest,
                      format_detected=fmt if detected else None,
                      msg="%s unarchived to %s" % (source, dest))
 
