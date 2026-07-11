@@ -5,7 +5,7 @@ The Multi Archive module (`multi_archive.py`) is a versatile Ansible module desi
 ## Features
 
 - **Support for Multiple Archive Formats**: Handles common archive formats including `tar.gz`, `tar.bz2`, and `zip`.
-- **Flexible Compression**: Offers compression using `gzip`, `bzip2` (native to `tar`), and the parallel compression utility `pigz` for faster `tar.gz` compression on multicore systems. Decompression is automatically handled based on the archive format.
+- **Flexible Compression**: Offers compression using `gzip` and the parallel utility `pigz` for faster `tar.gz` compression on multicore systems (`pigz` only applies to `tar.gz`). Decompression is automatically handled based on the archive format.
 - **Flexible File Inclusion/Exclusion**: Allows specifying files or patterns to include or exclude from the archive (primarily for `tar` based formats), providing control over the archive's contents.
 - **Automatic Format Detection**: For unarchiving tasks, the module can automatically detect the archive format based on the file extension, simplifying task definitions.
 - **Optional Source Deletion**: After successful archiving or unarchiving, the source files or directories can be optionally deleted.
@@ -15,7 +15,7 @@ The Multi Archive module (`multi_archive.py`) is a versatile Ansible module desi
 - `source`: Path to the file or directory to archive or unarchive. (Required)
 - `dest`: Destination path for the archive file or unarchiving operation. (Required)
 - `format`: (Optional) Specifies the archive format (`tar.gz`, `tar.bz2`, `zip`). Automatically detected during unarchiving if not provided based on the source file extension.
-- `compression`: (Optional for `tar.gz`) Compression method to use (`gzip`, `pigz`, `none`). Defaults to `none`, which uses the default compression for the specified format (e.g., `gzip` for `tar.gz`). For `tar.bz2` and `zip`, compression is inherent to the format.
+- `compression`: (Optional for `tar.gz`) Compression method to use (`gzip`, `pigz`, `none`). Defaults to `none`, which maps to `gzip` for `tar.gz`. For `tar.bz2` and `zip`, compression is inherent to the format and `compression` is rejected.
 - `state`: Determines the operation (`archived` or `unarchived`). (Required)
 - `delete_source`: (Optional) Whether to delete the source files/directories after operation. Defaults to `False`.
 - `include`: (Optional) List of files or patterns to include in the archive. Primarily for `tar`-based formats.
@@ -110,10 +110,7 @@ The module includes a test suite in `tests.yml`. This Ansible playbook contains 
 While `multi_archive.py` is functional, the following areas could be considered for future enhancements:
 
 - **Built-in `pigz` Fallback**: The module could internally check for `pigz` availability and automatically fall back to `gzip` if `pigz` is specified but not found, simplifying playbook logic.
-- **Idempotency**: True idempotency for Ansible modules ensures that if a task is run multiple times, it only performs actions if the desired state hasn't been reached. For this module, it would mean:
-    - **Archiving**: If the destination archive exists and its contents perfectly match the source files, the module should report `changed=False`. Currently, it might recreate the archive and report `changed=True`.
-    - **Unarchiving**: If the destination directory exists and its contents match the archive, it should report `changed=False`. Currently, it typically overwrites and reports `changed=True`.
-    Implementing full idempotency can be complex, involving checksum comparisons or dry-run creations.
+- **Idempotency**: The module now reports `changed=False` when the destination archive already exists (archive) or the destination directory is already populated (unarchive). Full content-comparison idempotency (re-archive only if source changed) is not implemented; a re-run still rewrites the archive content but is flagged `changed=False`.
 - **Expanded Format Support**: Add support for other archive formats like `tar.xz` or `7z`.
 - **Password Protection**: Introduce options for creating encrypted/password-protected archives for supported formats (e.g., `zip`).
 - **Checksum Verification**: Option to verify archive integrity after creation or before extraction using checksums.
