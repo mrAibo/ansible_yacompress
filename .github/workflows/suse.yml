@@ -1,0 +1,45 @@
+name: SUSE compatibility
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  opensuse-leap:
+    runs-on: ubuntu-24.04
+    container:
+      image: opensuse/leap:15.6
+    timeout-minutes: 20
+    steps:
+      - name: Install SUSE test requirements
+        run: |
+          zypper --non-interactive refresh
+          zypper --non-interactive install \
+            git-core tar gzip bzip2 xz zstd pigz zip unzip \
+            python311 python311-pip
+          python3.11 -m pip install --disable-pip-version-check ansible-core
+
+      - uses: actions/checkout@v4
+
+      - name: Build and install collection
+        run: |
+          mkdir -p build collections
+          python3.11 -m ansible.cli.galaxy collection build --output-path build
+          python3.11 -m ansible.cli.galaxy collection install \
+            build/mraibo-yacompress-1.4.0.tar.gz \
+            -p collections
+
+      - name: Run SUSE smoke test
+        env:
+          ANSIBLE_COLLECTIONS_PATH: ${{ github.workspace }}/collections
+          ANSIBLE_NOCOLOR: "1"
+        run: |
+          python3.11 -m ansible.cli.playbook \
+            -i localhost, \
+            -c local \
+            tests/suse_smoke.yml

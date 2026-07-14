@@ -1,0 +1,88 @@
+---
+- name: Validate yacompress on SUSE family systems
+  hosts: localhost
+  gather_facts: true
+
+  tasks:
+    - name: Create SUSE smoke workspace
+      ansible.builtin.tempfile:
+        state: directory
+        prefix: yacompress-suse-
+      register: workspace
+
+    - name: Exercise native compressors
+      block:
+        - name: Create source directories
+          ansible.builtin.file:
+            path: "{{ item }}"
+            state: directory
+            mode: "0755"
+          loop:
+            - "{{ workspace.path }}/config"
+            - "{{ workspace.path }}/data"
+
+        - name: Create source files
+          ansible.builtin.copy:
+            dest: "{{ item.path }}"
+            content: "{{ item.content }}"
+            mode: "0644"
+          loop:
+            - path: "{{ workspace.path }}/config/application.conf"
+              content: "platform=suse\n"
+            - path: "{{ workspace.path }}/data/payload.txt"
+              content: "native compression payload\n"
+
+        - name: Create multi-source zstd archive
+          mraibo.yacompress.multi_archive:
+            source:
+              - "{{ workspace.path }}/config"
+              - "{{ workspace.path }}/data"
+            dest: "{{ workspace.path }}/bundle.tar.zst"
+            state: archived
+            compression_level: 3
+            threads: 2
+            verify_archive: true
+          register: zstd_result
+
+        - name: Create pigz archive with explicit CPU limit
+          mraibo.yacompress.multi_archive:
+            source: "{{ workspace.path }}/data"
+            dest: "{{ workspace.path }}/data.tar.gz"
+            state: archived
+            compression: pigz
+            compression_level: 3
+            threads: 2
+            verify_archive: true
+          register: pigz_result
+
+        - name: Validate compressor results
+          ansible.builtin.assert:
+            that:
+              - ansible_facts.os_family == 'Suse'
+              - zstd_result.compression_used == 'zstd'
+              - zstd_result.threads_used == 2
+              - zstd_result.archive_bytes > 0
+              - pigz_result.compression_used == 'pigz'
+              - pigz_result.threads_used == 2
+              - pigz_result.archive_bytes > 0
+
+        - name: Extract zstd archive
+          mraibo.yacompress.multi_archive:
+            source: "{{ workspace.path }}/bundle.tar.zst"
+            dest: "{{ workspace.path }}/restored"
+            state: unarchived
+
+        - name: Read restored SUSE payload
+          ansible.builtin.slurp:
+            src: "{{ workspace.path }}/restored/config/application.conf"
+          register: restored
+
+        - name: Validate restored SUSE payload
+          ansible.builtin.assert:
+            that:
+              - restored.content | b64decode == 'platform=suse\n'
+      always:
+        - name: Remove SUSE smoke workspace
+          ansible.builtin.file:
+            path: "{{ workspace.path }}"
+            state: absent

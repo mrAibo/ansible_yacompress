@@ -1,6 +1,6 @@
-# Multi Archive Ansible Module
+# YaCompress Ansible Collection
 
-`multi_archive.py` creates and extracts archives on a managed Linux host. Its main reason to exist is fast native compression through `pigz`, `zstd`, and `xz`; for ordinary extraction, consider `ansible.builtin.unarchive` first.
+`mraibo.yacompress` creates and extracts archives on managed Linux hosts with native `tar`, `pigz`, `zstd`, `xz`, `bzip2`, and ZIP tools. Its purpose is fast, controllable Linux archiving with explicit safety guarantees. For ordinary extraction that does not need this combined interface, consider `ansible.builtin.unarchive` first.
 
 ## Features
 
@@ -12,18 +12,53 @@
 - optional thread limits and compression levels
 - optional archive verification
 - elapsed time, source/archive size, compression ratio, and throughput results
-- include globs and exclude patterns while archiving a single directory source
+- include globs and exclude patterns with a single directory source
 - automatic format detection from the archive extension
 - check-mode support without filesystem changes
 - explicit idempotency guard through `creates`
 - atomic archive replacement
-- optional source deletion after success; verification is mandatory before destructive deletion
+- source deletion only after successful verification
+- official `ansible-test sanity` and integration coverage
+- automated Ubuntu 24.04 and openSUSE Leap 15.6 validation
 
 ## Installation
 
-Place `multi_archive.py` in a `library/` directory next to the playbook, or set `ANSIBLE_LIBRARY` to the directory containing the module.
+Build and install the collection from a checkout:
+
+```bash
+ansible-galaxy collection build --output-path build
+ansible-galaxy collection install build/mraibo-yacompress-1.4.0.tar.gz
+```
+
+Use the fully qualified collection name:
+
+```yaml
+- name: Create verified archive
+  mraibo.yacompress.multi_archive:
+    source: /srv/data
+    dest: /srv/backups/data.tar.zst
+    state: archived
+    compression_level: 3
+    threads: auto
+    verify_archive: true
+```
+
+For legacy playbooks, the root `multi_archive.py` symlink can still be exposed through `ANSIBLE_LIBRARY`.
 
 Required commands depend on the selected format: `tar`, `gzip` or `pigz`, `bzip2`, `xz`, `zstd`, and `zip`/`unzip`.
+
+## Format selection
+
+| Scenario | Suggested format |
+|---|---|
+| Frequent Linux backups | `tar.zst`, level 1–3 |
+| Gzip compatibility with parallel compression | `tar.gz` with `compression: pigz` |
+| Restrict shared-server CPU use | Set an explicit `threads` value |
+| Compact long-term archives | `tar.xz` |
+| JPEG, MP4, ZIP, and other already-compressed data | `tar` |
+| Broad desktop/Windows exchange | ZIP |
+
+These are starting points. Use the included benchmark suite on the actual target hardware before making performance claims or operational decisions.
 
 ## Parameters
 
@@ -50,7 +85,7 @@ Without `creates`, an executed archive or extraction operation reports `changed:
 
 ```yaml
 - name: Archive application configuration and data
-  multi_archive:
+  mraibo.yacompress.multi_archive:
     source:
       - /etc/myapp
       - /opt/myapp-data
@@ -64,26 +99,11 @@ Without `creates`, an executed archive or extraction operation reports `changed:
 
 Each source is stored under its base name. Base names must be unique, source paths must not overlap, and `dest` must not be inside any source. Multiple sources are intentionally limited to TAR-family formats; ZIP lists are rejected to avoid surprising path layouts.
 
-### Fast zstd archive
-
-```yaml
-- name: Create and verify a zstd archive
-  multi_archive:
-    source: /srv/data
-    dest: /srv/backups/data.tar.zst
-    state: archived
-    compression_level: 3
-    threads: auto
-    verify_archive: true
-```
-
-For zstd, `threads: auto` passes the compressor's native all-available-CPU mode. For pigz, `auto` leaves thread selection to pigz. To limit server load, set an explicit positive integer.
-
 ### Limit pigz CPU use
 
 ```yaml
 - name: Archive with four pigz workers
-  multi_archive:
+  mraibo.yacompress.multi_archive:
     source: /srv/data
     dest: /srv/backups/data.tar.gz
     state: archived
@@ -92,11 +112,13 @@ For zstd, `threads: auto` passes the compressor's native all-available-CPU mode.
     threads: 4
 ```
 
+For zstd, `threads: auto` selects its native all-available-CPU mode. For pigz, `auto` leaves worker selection to pigz. Set a positive integer to limit shared-server load.
+
 ### Uncompressed tar
 
 ```yaml
 - name: Bundle already-compressed media quickly
-  multi_archive:
+  mraibo.yacompress.multi_archive:
     source: /srv/media
     dest: /srv/backups/media.tar
     state: archived
@@ -106,14 +128,12 @@ For zstd, `threads: auto` passes the compressor's native all-available-CPU mode.
 
 ```yaml
 - name: Extract application bundle once
-  multi_archive:
+  mraibo.yacompress.multi_archive:
     source: /srv/releases/application.tar.zst
     dest: /opt/application
     creates: /opt/application/bin/application
     state: unarchived
 ```
-
-For extraction that does not require this module's combined interface, prefer `ansible.builtin.unarchive`.
 
 ## Returned performance data
 
@@ -143,7 +163,34 @@ The source-size calculation reads filesystem metadata but does not hash or rerea
 - With multiple sources, a deletion error reports both deleted and remaining paths.
 - Invalid compression levels and unsupported thread settings fail explicitly.
 
-## Testing
+## Quality and compatibility
+
+Every pull request runs:
+
+- Python behavior and destructive failure-path tests;
+- real gzip, pigz, bzip2, xz, zstd, TAR, and ZIP tests;
+- legacy and installed-collection smoke tests;
+- `ansible-test sanity` without ignore files;
+- `ansible-test integration` against the FQCN module;
+- openSUSE Leap 15.6 collection build/install and native pigz/zstd smoke tests.
+
+The SUSE container test is a useful compatibility signal, but it does not replace validation on the exact SLES service pack, repositories, Python, Ansible, storage, and security policy used in production.
+
+## Benchmarking
+
+A reproducible comparison with `community.general.archive` is included. It generates large-file, many-small-file, and mixed datasets, validates each archive, and writes raw CSV plus a Markdown summary.
+
+```bash
+ANSIBLE_COLLECTIONS_PATH="$PWD/collections" \
+python3 benchmarks/run.py \
+  --size-mib 512 \
+  --small-files 10000 \
+  --iterations 3
+```
+
+See [`docs/BENCHMARKING.md`](docs/BENCHMARKING.md) for methodology, caveats, local setup, and the manual GitHub Actions workflow.
+
+## Local testing
 
 ```bash
 python3 tests/test_multi_archive.py
@@ -151,6 +198,8 @@ python3 tests/test_failure_paths.py
 python3 tests/test_formats_performance.py
 python3 tests/test_multiple_sources.py
 ANSIBLE_LIBRARY=. ansible-playbook -i localhost, -c local tests.yml
-```
 
-The same suite runs automatically through GitHub Actions on every pull request and push to `main`.
+# Run from an ansible_collections/mraibo/yacompress checkout:
+ansible-test sanity --python 3.12
+ansible-test integration --python 3.12 multi_archive
+```
