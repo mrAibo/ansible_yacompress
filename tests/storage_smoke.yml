@@ -1,0 +1,144 @@
+---
+- name: Validate large sparse files and destination filesystem behavior
+  hosts: localhost
+  gather_facts: false
+  vars:
+    root: /tmp/yacompress-storage-smoke
+    dest_root: /tmp/yacompress-storage-dest
+    logical_size: 5368709243
+  tasks:
+    - name: Reset source workspace
+      ansible.builtin.file:
+        path: "{{ root }}"
+        state: absent
+
+    - name: Create source and destination directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: "0755"
+      loop:
+        - "{{ root }}"
+        - "{{ dest_root }}"
+
+    - name: Create sparse file larger than 5 GiB with sentinels
+      ansible.builtin.shell: |
+        python3 - <<'PY'
+        from pathlib import Path
+
+        path = Path("{{ root }}/large-sparse.img")
+        size = {{ logical_size }}
+        with path.open('wb') as stream:
+            stream.seek(size - 1)
+            stream.write(b'\0')
+        with path.open('r+b') as stream:
+            stream.seek(0)
+            stream.write(b'YACOMPRESS-BEGIN')
+            stream.seek(size - 32)
+            stream.write(b'YACOMPRESS-END')
+        PY
+      args:
+        executable: /bin/sh
+      changed_when: true
+
+    - name: Create verified sparse zstd archive
+      mraibo.yacompress.multi_archive:
+        source: "{{ root }}/large-sparse.img"
+        dest: "{{ dest_root }}/large-sparse.tar.zst"
+        state: archived
+        sparse: true
+        compression_level: 1
+        threads: 1
+        verify_archive: true
+      register: first_archive
+
+    - name: Validate first archive metadata
+      ansible.builtin.assert:
+        that:
+          - first_archive.changed
+          - first_archive.sparse_used
+          - first_archive.source_bytes | int == logical_size | int
+          - first_archive.archive_bytes | int > 0
+          - first_archive.archive_bytes | int < 16777216
+
+    - name: Change payload before replacing existing archive
+      ansible.builtin.shell: |
+        python3 - <<'PY'
+        from pathlib import Path
+        path = Path("{{ root }}/large-sparse.img")
+        with path.open('r+b') as stream:
+            stream.seek(4096)
+            stream.write(b'SECOND-GENERATION')
+        PY
+      args:
+        executable: /bin/sh
+      changed_when: true
+
+    - name: Atomically replace existing archive
+      mraibo.yacompress.multi_archive:
+        source: "{{ root }}/large-sparse.img"
+        dest: "{{ dest_root }}/large-sparse.tar.zst"
+        state: archived
+        sparse: true
+        compression_level: 1
+        threads: 1
+        verify_archive: true
+      register: replacement
+
+    - name: Validate replacement metadata
+      ansible.builtin.assert:
+        that:
+          - replacement.changed
+          - replacement.sparse_used
+          - replacement.archive_bytes | int < 16777216
+
+    - name: Reset extraction directory
+      ansible.builtin.file:
+        path: "{{ root }}/restored"
+        state: absent
+
+    - name: Extract replacement archive
+      mraibo.yacompress.multi_archive:
+        source: "{{ dest_root }}/large-sparse.tar.zst"
+        dest: "{{ root }}/restored"
+        state: unarchived
+
+    - name: Verify restored logical size, content, and sparse allocation
+      ansible.builtin.shell: |
+        python3 - <<'PY'
+        import os
+        from pathlib import Path
+
+        path = Path("{{ root }}/restored/large-sparse.img")
+        expected_size = {{ logical_size }}
+        stat = path.stat()
+        if stat.st_size != expected_size:
+            raise SystemExit('unexpected logical size: %d' % stat.st_size)
+        if stat.st_blocks * 512 >= 134217728:
+            raise SystemExit('restored file is no longer sparse: %d allocated bytes' % (stat.st_blocks * 512))
+        with path.open('rb') as stream:
+            if stream.read(16) != b'YACOMPRESS-BEGIN':
+                raise SystemExit('begin sentinel mismatch')
+            stream.seek(4096)
+            if stream.read(17) != b'SECOND-GENERATION':
+                raise SystemExit('replacement sentinel mismatch')
+            stream.seek(expected_size - 32)
+            if stream.read(14) != b'YACOMPRESS-END':
+                raise SystemExit('end sentinel mismatch')
+        PY
+      args:
+        executable: /bin/sh
+      changed_when: false
+
+    - name: Find leaked temporary archive directories
+      ansible.builtin.find:
+        paths: "{{ dest_root }}"
+        patterns: ".multi_archive-*"
+        file_type: directory
+        hidden: true
+      register: leaked_temporary_directories
+
+    - name: Verify temporary archives were cleaned up
+      ansible.builtin.assert:
+        that:
+          - leaked_temporary_directories.matched | int == 0
