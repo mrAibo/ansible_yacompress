@@ -1,6 +1,10 @@
 name: Archive benchmark
 
 on:
+  pull_request:
+    paths:
+      - benchmarks/**
+      - .github/workflows/benchmark.yml
   workflow_dispatch:
     inputs:
       size_mib:
@@ -23,6 +27,10 @@ jobs:
   benchmark:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
+    env:
+      SIZE_MIB: ${{ github.event_name == 'workflow_dispatch' && inputs.size_mib || '2' }}
+      SMALL_FILES: ${{ github.event_name == 'workflow_dispatch' && inputs.small_files || '50' }}
+      ITERATIONS: ${{ github.event_name == 'workflow_dispatch' && inputs.iterations || '1' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -45,9 +53,9 @@ jobs:
           ANSIBLE_NOCOLOR: "1"
         run: |
           python3 benchmarks/run.py \
-            --size-mib "${{ inputs.size_mib }}" \
-            --small-files "${{ inputs.small_files }}" \
-            --iterations "${{ inputs.iterations }}"
+            --size-mib "$SIZE_MIB" \
+            --small-files "$SMALL_FILES" \
+            --iterations "$ITERATIONS"
 
       - name: Show summary
         run: cat benchmark-results/results.md
