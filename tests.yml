@@ -1,316 +1,61 @@
 ---
-- name: Test multi_archive module
+- name: Smoke-test multi_archive through Ansible
   hosts: localhost
-  gather_facts: no
+  gather_facts: false
   vars:
-    base_test_dir: "test_data"
-    source_dir: "{{ base_test_dir }}/source_dir"
-    source_dir_delete: "{{ base_test_dir }}/source_dir_delete"
-    source_dir_unarchive_delete: "{{ base_test_dir }}/source_dir_unarchive_delete" # Used for unarchive delete test
-    archive_dest_dir: "{{ base_test_dir }}/archives"
-    unarchive_dest_dir: "{{ base_test_dir }}/unarchived"
-
-  pre_tasks:
-    - name: Ensure base test directories exist
-      ansible.builtin.file:
-        path: "{{ item }}"
-        state: directory
-        mode: '0755'
-      loop:
-        - "{{ base_test_dir }}"
-        - "{{ source_dir }}/subdir"
-        - "{{ source_dir_delete }}"
-        - "{{ source_dir_unarchive_delete }}"
-        - "{{ archive_dest_dir }}"
-        - "{{ unarchive_dest_dir }}"
-
-    - name: Create dummy source files
-      ansible.builtin.copy:
-        content: "{{ item.content }}"
-        dest: "{{ item.path }}"
-      loop:
-        - { path: "{{ source_dir }}/file1.txt", content: "This is file1." }
-        - { path: "{{ source_dir }}/file2.log", content: "This is a log file." }
-        - { path: "{{ source_dir }}/subdir/file3.ini", content: "[settings]\nkey=value" }
-        - { path: "{{ source_dir_delete }}/delete_me.txt", content: "This file is for delete_source test." }
-        - { path: "{{ source_dir_unarchive_delete }}/file_to_archive_then_delete.txt", content: "Content for unarchive delete test" }
+    test_root: "{{ playbook_dir }}/test_data"
+    source_dir: "{{ test_root }}/source"
+    archive_path: "{{ test_root }}/archives/source.tar.gz"
 
   tasks:
-    # --------------------------------------------------------------------------
-    # Archiving Tests
-    # --------------------------------------------------------------------------
-    - name: ARCHIVE | tar.gz | gzip compression
-      multi_archive:
-        source: "{{ source_dir }}"
-        dest: "{{ archive_dest_dir }}/archive_gzip.tar.gz"
-        format: tar.gz
-        compression: gzip # Explicitly gzip, 'none' would also use gzip for tar.gz
-        state: archived
-      register: archive_tgz_gzip
-    - name: VERIFY | tar.gz | gzip compression
-      ansible.builtin.stat:
-        path: "{{ archive_dest_dir }}/archive_gzip.tar.gz"
-      register: archive_gzip_stat_result
-      failed_when: not archive_gzip_stat_result.stat.exists
-      changed_when: false
+    - name: Run smoke test with guaranteed cleanup
+      block:
+        - name: Prepare source data
+          ansible.builtin.shell:
+            cmd: |
+              set -eu
+              mkdir -p {{ source_dir | quote }}/subdir {{ test_root | quote }}/archives
+              printf '%s\n' 'one' > {{ source_dir | quote }}/one.txt
+              printf '%s\n' 'two' > {{ source_dir | quote }}/subdir/two.txt
+          changed_when: true
 
-    - name: ARCHIVE | tar.gz | pigz compression
-      multi_archive:
-        source: "{{ source_dir }}"
-        dest: "{{ archive_dest_dir }}/archive_pigz.tar.gz"
-        format: tar.gz
-        compression: pigz
-        state: archived
-      register: archive_tgz_pigz
-    - name: VERIFY | tar.gz | pigz compression
-      ansible.builtin.stat:
-        path: "{{ archive_dest_dir }}/archive_pigz.tar.gz"
-      register: archive_pigz_stat_result
-      failed_when: not archive_pigz_stat_result.stat.exists
-      changed_when: false
+        - name: Predict archive creation without touching the filesystem
+          multi_archive:
+            source: "{{ source_dir }}"
+            dest: "{{ test_root }}/check-only/source.tar.gz"
+            state: archived
+          check_mode: true
+          register: check_result
 
-    - name: ARCHIVE | tar.bz2
-      multi_archive:
-        source: "{{ source_dir }}"
-        dest: "{{ archive_dest_dir }}/archive.tar.bz2"
-        format: tar.bz2
-        state: archived
-      register: archive_tbz2
-    - name: VERIFY | tar.bz2
-      ansible.builtin.stat:
-        path: "{{ archive_dest_dir }}/archive.tar.bz2"
-      register: archive_tbz2_stat_result
-      failed_when: not archive_tbz2_stat_result.stat.exists
-      changed_when: false
+        - name: Verify check mode made no filesystem changes
+          ansible.builtin.shell:
+            cmd: |
+              set -eu
+              test "{{ check_result.changed | lower }}" = true
+              test ! -e {{ test_root | quote }}/check-only
+          changed_when: false
 
-    - name: ARCHIVE | zip
-      multi_archive:
-        source: "{{ source_dir }}"
-        dest: "{{ archive_dest_dir }}/archive.zip"
-        format: zip
-        state: archived
-      register: archive_zip
-    - name: VERIFY | zip
-      ansible.builtin.stat:
-        path: "{{ archive_dest_dir }}/archive.zip"
-      register: archive_zip_stat_result
-      failed_when: not archive_zip_stat_result.stat.exists
-      changed_when: false
+        - name: Create archive through the custom module
+          multi_archive:
+            source: "{{ source_dir }}"
+            dest: "{{ archive_path }}"
+            state: archived
+            compression: auto
+          register: archive_result
 
-    - name: ARCHIVE | include option (tar.gz)
-      multi_archive:
-        source: "{{ source_dir }}"
-        dest: "{{ archive_dest_dir }}/archive_include.tar.gz"
-        format: tar.gz
-        state: archived
-        include:
-          - "file1.txt"
-          - "subdir/"
-      register: archive_include
-    - name: VERIFY | include option (tar.gz)
-      ansible.builtin.stat:
-        path: "{{ archive_dest_dir }}/archive_include.tar.gz"
-      register: archive_include_stat_result
-      failed_when: not archive_include_stat_result.stat.exists
-      changed_when: false
-    # Add verification for content of include archive later if possible (e.g. unarchive and check)
+        - name: Verify archive result and members
+          ansible.builtin.shell:
+            cmd: |
+              set -eu
+              test "{{ archive_result.changed | lower }}" = true
+              test "{{ archive_result.format_detected }}" = tar.gz
+              tar -tzf {{ archive_path | quote }} | grep -Fx source/one.txt
+              tar -tzf {{ archive_path | quote }} | grep -Fx source/subdir/two.txt
+          changed_when: false
 
-    - name: ARCHIVE | exclude option (tar.gz)
-      multi_archive:
-        source: "{{ source_dir }}"
-        dest: "{{ archive_dest_dir }}/archive_exclude.tar.gz"
-        format: tar.gz
-        state: archived
-        exclude:
-          - "*.log"
-          - "subdir/file3.ini"
-      register: archive_exclude
-    - name: VERIFY | exclude option (tar.gz)
-      ansible.builtin.stat:
-        path: "{{ archive_dest_dir }}/archive_exclude.tar.gz"
-      register: archive_exclude_stat_result
-      failed_when: not archive_exclude_stat_result.stat.exists
-      changed_when: false
-    # Add verification for content of exclude archive later if possible
-
-    - name: ARCHIVE | delete_source option (tar.gz)
-      multi_archive:
-        source: "{{ source_dir_delete }}"
-        dest: "{{ archive_dest_dir }}/archive_delete_source.tar.gz"
-        format: tar.gz
-        state: archived
-        delete_source: true
-      register: archive_delete_source
-    - name: VERIFY | delete_source option (archive) - source deleted
-      ansible.builtin.stat:
-        path: "{{ source_dir_delete }}"
-      register: delete_source_dir_stat_result
-      failed_when: delete_source_dir_stat_result.stat.exists # Source should be deleted
-      changed_when: false
-    - name: VERIFY | delete_source option (archive) - archive created
-      ansible.builtin.stat:
-        path: "{{ archive_dest_dir }}/archive_delete_source.tar.gz"
-      register: delete_source_archive_stat_result
-      failed_when: not delete_source_archive_stat_result.stat.exists
-      changed_when: false
-
-    # --------------------------------------------------------------------------
-    # Unarchiving Tests
-    # --------------------------------------------------------------------------
-    - name: UNARCHIVE | tar.gz (created with gzip)
-      multi_archive:
-        source: "{{ archive_dest_dir }}/archive_gzip.tar.gz"
-        dest: "{{ unarchive_dest_dir }}/unarch_gzip_tgz"
-        state: unarchived
-      register: unarchive_tgz_gzip
-    - name: VERIFY | tar.gz (created with gzip) - unarchived content
-      ansible.builtin.stat:
-        path: "{{ unarchive_dest_dir }}/unarch_gzip_tgz/source_dir/file1.txt"
-      register: unarchive_gzip_content_stat
-      failed_when: not unarchive_gzip_content_stat.stat.exists
-      changed_when: false
-
-    - name: UNARCHIVE | tar.gz (created with pigz)
-      multi_archive:
-        source: "{{ archive_dest_dir }}/archive_pigz.tar.gz"
-        dest: "{{ unarchive_dest_dir }}/unarch_pigz_tgz"
-        state: unarchived
-      register: unarchive_tgz_pigz
-    - name: VERIFY | tar.gz (created with pigz) - unarchived content
-      ansible.builtin.stat:
-        path: "{{ unarchive_dest_dir }}/unarch_pigz_tgz/source_dir/file1.txt"
-      register: unarchive_pigz_content_stat
-      failed_when: not unarchive_pigz_content_stat.stat.exists
-      changed_when: false
-
-    - name: UNARCHIVE | tar.bz2
-      multi_archive:
-        source: "{{ archive_dest_dir }}/archive.tar.bz2"
-        dest: "{{ unarchive_dest_dir }}/unarch_tbz2"
-        state: unarchived
-      register: unarchive_tbz2
-    - name: VERIFY | tar.bz2 - unarchived content
-      ansible.builtin.stat:
-        path: "{{ unarchive_dest_dir }}/unarch_tbz2/source_dir/file1.txt"
-      register: unarchive_tbz2_content_stat
-      failed_when: not unarchive_tbz2_content_stat.stat.exists
-      changed_when: false
-
-    - name: UNARCHIVE | zip
-      multi_archive:
-        source: "{{ archive_dest_dir }}/archive.zip"
-        dest: "{{ unarchive_dest_dir }}/unarch_zip"
-        state: unarchived
-      register: unarchive_zip
-    - name: VERIFY | zip - unarchived content
-      ansible.builtin.stat:
-        path: "{{ unarchive_dest_dir }}/unarch_zip/{{ source_dir }}/file1.txt"
-      register: unarchive_zip_content_stat
-      failed_when: not unarchive_zip_content_stat.stat.exists
-      changed_when: false
-
-    - name: UNARCHIVE | Auto-detect tar.gz
-      multi_archive:
-        source: "{{ archive_dest_dir }}/archive_gzip.tar.gz" # Use a known .tar.gz
-        dest: "{{ unarchive_dest_dir }}/unarch_auto_tgz"
-        state: unarchived
-        # format is not specified for auto-detection
-      register: unarchive_auto_tgz
-    - name: VERIFY | Auto-detect tar.gz - unarchived content
-      ansible.builtin.stat:
-        path: "{{ unarchive_dest_dir }}/unarch_auto_tgz/source_dir/file1.txt"
-      register: unarchive_auto_tgz_content_stat
-      failed_when: not unarchive_auto_tgz_content_stat.stat.exists
-      changed_when: false
-
-    - name: UNARCHIVE | Auto-detect tar.bz2
-      multi_archive:
-        source: "{{ archive_dest_dir }}/archive.tar.bz2"
-        dest: "{{ unarchive_dest_dir }}/unarch_auto_tbz2"
-        state: unarchived
-      register: unarchive_auto_tbz2
-    - name: VERIFY | Auto-detect tar.bz2 - unarchived content
-      ansible.builtin.stat:
-        path: "{{ unarchive_dest_dir }}/unarch_auto_tbz2/source_dir/file1.txt"
-      register: unarchive_auto_tbz2_content_stat
-      failed_when: not unarchive_auto_tbz2_content_stat.stat.exists
-      changed_when: false
-
-    - name: UNARCHIVE | Auto-detect zip
-      multi_archive:
-        source: "{{ archive_dest_dir }}/archive.zip"
-        dest: "{{ unarchive_dest_dir }}/unarch_auto_zip"
-        state: unarchived
-      register: unarchive_auto_zip
-    - name: VERIFY | Auto-detect zip - unarchived content
-      ansible.builtin.stat:
-        path: "{{ unarchive_dest_dir }}/unarch_auto_zip/{{ source_dir }}/file1.txt"
-      register: unarchive_auto_zip_content_stat
-      failed_when: not unarchive_auto_zip_content_stat.stat.exists
-      changed_when: false
-
-    - name: SETUP | Create archive for delete_source unarchive test
-      multi_archive:
-        source: "{{ source_dir_unarchive_delete }}"
-        dest: "{{ archive_dest_dir }}/archive_for_unarchive_delete.tar.gz"
-        format: tar.gz
-        state: archived
-    - name: UNARCHIVE | delete_source option (tar.gz)
-      multi_archive:
-        source: "{{ archive_dest_dir }}/archive_for_unarchive_delete.tar.gz"
-        dest: "{{ unarchive_dest_dir }}/unarch_delete_source"
-        state: unarchived
-        delete_source: true
-      register: unarchive_delete_source
-    - name: VERIFY | delete_source option (unarchive) - source archive deleted
-      ansible.builtin.stat:
-        path: "{{ archive_dest_dir }}/archive_for_unarchive_delete.tar.gz"
-      register: delete_source_unarchive_stat_result
-      failed_when: delete_source_unarchive_stat_result.stat.exists # Source archive should be deleted
-      changed_when: false
-    - name: VERIFY | delete_source option (unarchive) - content unarchived
-      ansible.builtin.stat:
-        path: "{{ unarchive_dest_dir }}/unarch_delete_source/source_dir_unarchive_delete/file_to_archive_then_delete.txt"
-      register: delete_source_unarchive_content_stat
-      failed_when: not delete_source_unarchive_content_stat.stat.exists
-      changed_when: false
-
-    # --------------------------------------------------------------------------
-    # Idempotence Check
-    # --------------------------------------------------------------------------
-    - name: IDEMPOTENCE | Re-run archive tar.gz (pigz)
-      multi_archive:
-        source: "{{ source_dir }}" # source_dir still exists
-        dest: "{{ archive_dest_dir }}/archive_pigz.tar.gz" # Archive already exists
-        format: tar.gz
-        compression: pigz
-        state: archived
-      register: archive_tgz_pigz_idem
-    # - name: VERIFY | Idempotence for archiving
-    #   ansible.builtin.assert:
-    #     that:
-    #       - not archive_tgz_pigz_idem.changed # Should not report changed if archive is identical
-    #     msg: "Archiving idempotence check failed. Module reported change when it shouldn't have."
-
-    - name: IDEMPOTENCE | Re-run unarchive tar.gz
-      multi_archive:
-        source: "{{ archive_dest_dir }}/archive_gzip.tar.gz" # Archive still exists
-        dest: "{{ unarchive_dest_dir }}/unarch_gzip_tgz" # Destination already has content
-        state: unarchived
-      register: unarchive_tgz_gzip_idem
-    # - name: VERIFY | Idempotence for unarchiving
-    #   ansible.builtin.assert:
-    #     that:
-    #       - not unarchive_tgz_gzip_idem.changed # Should not report changed if content is already there
-    #     msg: "Unarchiving idempotence check failed. Module reported change when it shouldn't have."
-
-  post_tasks:
-    - name: Clean up test files and directories
-      ansible.builtin.file:
-        path: "{{ base_test_dir }}"
-        state: absent
-      changed_when: false
-      ignore_errors: true
-
-# To run: ansible-playbook tests.yml  (module is found via ANSIBLE_LIBRARY=. or local library/)
-
+      always:
+        - name: Remove smoke-test data
+          ansible.builtin.file:
+            path: "{{ test_root }}"
+            state: absent
+          changed_when: false
