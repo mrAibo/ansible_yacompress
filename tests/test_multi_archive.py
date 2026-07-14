@@ -221,6 +221,7 @@ class MultiArchiveTests(unittest.TestCase):
         marker = self.root / 'marker'
         marker.write_text('done', encoding='utf-8')
         params = self.archive_params(self.root / 'unused.tar.gz', creates=str(marker))
+        params.pop('format_detected')
         with self.assertRaises(ExitResult) as result:
             multi_archive._skip_if_created(self.module, params)
         self.assertFalse(result.exception.result['changed'])
