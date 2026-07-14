@@ -1,0 +1,23 @@
+---
+namespace: mraibo
+name: yacompress
+version: 1.4.0
+readme: README.md
+authors:
+  - Aleksej Voronin (@mrAibo)
+description: Fast and safe native archive creation and extraction for Ansible.
+license:
+  - GPL-3.0-or-later
+tags:
+  - archive
+  - backup
+  - compression
+  - gzip
+  - zstd
+  - system
+repository: https://github.com/mrAibo/ansible_yacompress
+issues: https://github.com/mrAibo/ansible_yacompress/issues
+build_ignore:
+  - .gitignore
+  - .github
+  - tests/.validation-ok

@@ -1,0 +1,41 @@
+---
+- name: Validate installed collection module
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    test_root: /tmp/yacompress-collection-smoke
+  tasks:
+    - name: Reset smoke-test directory
+      ansible.builtin.file:
+        path: "{{ test_root }}"
+        state: absent
+
+    - name: Create source directory
+      ansible.builtin.file:
+        path: "{{ test_root }}/source"
+        state: directory
+        mode: "0755"
+
+    - name: Create source file
+      ansible.builtin.copy:
+        dest: "{{ test_root }}/source/example.txt"
+        content: collection-smoke
+        mode: "0644"
+
+    - name: Create archive through collection FQCN
+      mraibo.yacompress.multi_archive:
+        source: "{{ test_root }}/source"
+        dest: "{{ test_root }}/source.tar.zst"
+        state: archived
+        compression_level: 1
+        threads: 1
+        verify_archive: true
+      register: archive_result
+
+    - name: Verify collection result
+      ansible.builtin.assert:
+        that:
+          - archive_result.changed
+          - archive_result.compression_used == 'zstd'
+          - archive_result.archive_bytes > 0
