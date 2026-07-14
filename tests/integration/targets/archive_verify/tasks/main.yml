@@ -69,7 +69,7 @@
   mraibo.yacompress.archive_verify:
     path: "{{ archive_verify_temp.path }}/broken.tar.zst"
   register: invalid_archive_failure
-  failed_when: false
+  ignore_errors: true
 
 - name: Assert default failure behavior
   ansible.builtin.assert:
