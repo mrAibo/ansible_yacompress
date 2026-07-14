@@ -19,11 +19,15 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y pigz zip unzip bzip2 xz-utils zstd
           python3 -m pip install --disable-pip-version-check ansible-core
-      - name: Run tests
-        run: |
-          python3 -m py_compile multi_archive.py tests/test_multi_archive.py tests/test_failure_paths.py tests/test_formats_performance.py
-          python3 tests/test_multi_archive.py
-          python3 tests/test_failure_paths.py
-          python3 tests/test_formats_performance.py
-          ANSIBLE_LIBRARY=. ansible-doc -t module multi_archive >/dev/null
-          ANSIBLE_LIBRARY=. ANSIBLE_NOCOLOR=1 ansible-playbook -i localhost, -c local tests.yml
+      - name: Compile
+        run: python3 -m py_compile multi_archive.py tests/test_multi_archive.py tests/test_failure_paths.py tests/test_formats_performance.py
+      - name: Existing behavior tests
+        run: python3 tests/test_multi_archive.py
+      - name: Failure-path tests
+        run: python3 tests/test_failure_paths.py
+      - name: Format and performance tests
+        run: python3 tests/test_formats_performance.py
+      - name: Module documentation
+        run: ANSIBLE_LIBRARY=. ansible-doc -t module multi_archive >/dev/null
+      - name: Ansible smoke test
+        run: ANSIBLE_LIBRARY=. ANSIBLE_NOCOLOR=1 ansible-playbook -i localhost, -c local tests.yml
