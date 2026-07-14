@@ -59,7 +59,7 @@ CASES = (
 def parse_args():
     parser = argparse.ArgumentParser(description='Benchmark yacompress against community.general.archive.')
     parser.add_argument('--size-mib', type=int, default=64, help='Approximate large-file dataset size.')
-    parser.add_argument('--small-files', type=int, default=2000, help='Number of small files in the metadata-heavy dataset.')
+    parser.add_argument('--small-files', type=int, default=2000, help='Number of files in the metadata-heavy dataset.')
     parser.add_argument('--iterations', type=int, default=2, help='Measured iterations per case and dataset.')
     parser.add_argument('--output-dir', default='benchmark-results', help='Directory for CSV and Markdown results.')
     parser.add_argument('--skip-community', action='store_true', help='Skip community.general.archive cases.')
@@ -67,6 +67,7 @@ def parse_args():
 
 
 def write_datasets(root, size_mib, small_files):
+    root.mkdir(parents=True, exist_ok=True)
     datasets = {}
 
     large = root / 'large-compressible'
@@ -96,11 +97,12 @@ def write_datasets(root, size_mib, small_files):
     mixed.mkdir()
     shutil.copy2(large / 'payload.log', mixed / 'application.log')
     compressed_source = mixed / 'already-compressed.bin.gz'
-    subprocess.run(
-        ['gzip', '-c', str(large / 'payload.log')],
-        check=True,
-        stdout=compressed_source.open('wb'),
-    )
+    with compressed_source.open('wb') as stream:
+        subprocess.run(
+            ['gzip', '-c', str(large / 'payload.log')],
+            check=True,
+            stdout=stream,
+        )
     for index in range(200):
         (mixed / ('config-%03d.ini' % index)).write_text(
             '[section]\nenabled=true\nindex=%d\n' % index,
