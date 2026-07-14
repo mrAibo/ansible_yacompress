@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 # Regression coverage for list-valued source handling.
 
 import importlib.util
