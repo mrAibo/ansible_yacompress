@@ -2,6 +2,29 @@
 
 All notable changes to this project are documented here.
 
+## 1.6.0 — 2026-07-15
+
+### Added
+
+- `mraibo.yacompress.archive_verify` for read-only structural verification of existing TAR-family and ZIP archives.
+- `mraibo.yacompress.archive_rotate` for deterministic retention by count and age, with Check Mode previews, `min_keep`, path confinement, and symlink protection.
+- `mraibo.yacompress.archive_manifest` for deterministic, atomically written SHA-256 manifests covering one archive or a selected directory tree.
+- Detection of missing, changed, and unexpected files during manifest verification.
+- Detailed operational guides for archive verification, rotation, manifests, and the complete backup lifecycle.
+- A runnable end-to-end workflow that creates, verifies, manifests, and rotates application backups.
+
+### Safety
+
+- Verification and manifest checks are read-only and report `changed: false`.
+- Rotation preserves at least one newest archive by default and never follows symbolic links.
+- Manifest paths are validated before use, and changed manifests are replaced atomically beside their destination.
+- The documented workflow rotates older recovery points only after the new archive passes structural and checksum verification.
+
+### Quality
+
+- Unit and official `ansible-test integration` coverage for all four collection modules.
+- Continuous validation across modern, enterprise, and SUSE Linux matrices remains part of every pull request.
+
 ## 1.5.0 — 2026-07-14
 
 ### Added
