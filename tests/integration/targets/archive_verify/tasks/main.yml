@@ -1,0 +1,83 @@
+---
+- name: Create archive_verify test directory
+  ansible.builtin.tempfile:
+    state: directory
+    suffix: archive-verify
+  register: archive_verify_temp
+
+- name: Create source file
+  ansible.builtin.copy:
+    dest: "{{ archive_verify_temp.path }}/payload.txt"
+    content: "verified payload\n"
+    mode: "0600"
+
+- name: Create valid zstd archive
+  mraibo.yacompress.multi_archive:
+    source: "{{ archive_verify_temp.path }}/payload.txt"
+    dest: "{{ archive_verify_temp.path }}/payload.tar.zst"
+    state: archived
+    verify_archive: true
+  register: archive_created
+
+- name: Verify valid archive
+  mraibo.yacompress.archive_verify:
+    path: "{{ archive_verify_temp.path }}/payload.tar.zst"
+  register: archive_verified
+
+- name: Assert valid archive result
+  ansible.builtin.assert:
+    that:
+      - archive_verified is not changed
+      - archive_verified.valid
+      - archive_verified.format == 'tar.zst'
+      - archive_verified.backend == 'tar+zstd'
+      - archive_verified.archive_bytes > 0
+      - archive_verified.elapsed_seconds >= 0
+
+- name: Verify archive in check mode
+  mraibo.yacompress.archive_verify:
+    path: "{{ archive_verify_temp.path }}/payload.tar.zst"
+  check_mode: true
+  register: archive_check_mode
+
+- name: Assert check mode remains read-only and performs verification
+  ansible.builtin.assert:
+    that:
+      - archive_check_mode is not changed
+      - archive_check_mode.valid
+
+- name: Create invalid archive
+  ansible.builtin.copy:
+    dest: "{{ archive_verify_temp.path }}/broken.tar.zst"
+    content: "not an archive\n"
+    mode: "0600"
+
+- name: Inspect invalid archive without failing
+  mraibo.yacompress.archive_verify:
+    path: "{{ archive_verify_temp.path }}/broken.tar.zst"
+    fail_on_error: false
+  register: invalid_archive
+
+- name: Assert invalid archive result
+  ansible.builtin.assert:
+    that:
+      - invalid_archive is not changed
+      - not invalid_archive.valid
+      - invalid_archive.error | length > 0
+
+- name: Invalid archive fails by default
+  mraibo.yacompress.archive_verify:
+    path: "{{ archive_verify_temp.path }}/broken.tar.zst"
+  register: invalid_archive_failure
+  failed_when: false
+
+- name: Assert default failure behavior
+  ansible.builtin.assert:
+    that:
+      - invalid_archive_failure is failed
+      - not invalid_archive_failure.valid
+
+- name: Remove archive_verify test directory
+  ansible.builtin.file:
+    path: "{{ archive_verify_temp.path }}"
+    state: absent
