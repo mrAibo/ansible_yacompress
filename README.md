@@ -90,6 +90,7 @@ For extraction that does not require this module's combined interface, prefer th
 - A new archive is written beside the destination and atomically replaces it only after the command succeeds.
 - `dest` is rejected when it is inside a directory `source`.
 - Include entries must stay inside `source`.
+- ZIP archives preserve symbolic links instead of following them outside the source tree.
 - `delete_source: true` never runs before the archive/extraction command succeeds.
 - Archives are verified before deleting an archived source.
 
