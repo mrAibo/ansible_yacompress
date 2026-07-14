@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - agent/archive-safety-idempotency
+  pull_request:
+    branches:
+      - main
 
 jobs:
   test:
