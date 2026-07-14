@@ -352,7 +352,7 @@ def _skip_if_created(module, params):
             skipped=True,
             original_source=params['source'],
             destination=params['dest'],
-            format_detected=params['format_detected'],
+            format_detected=params.get('format_detected'),
             msg="Skipped because creates path exists: %s" % creates,
         )
 
@@ -477,6 +477,8 @@ def main():
     )
 
     params = module.params
+    _skip_if_created(module, params)
+
     detected = params['format'] is None
     params['format'] = params['format'] or detect_archive_format(
         params['dest'] if params['state'] == 'archived' else params['source']
@@ -485,7 +487,6 @@ def main():
         module.fail_json(msg="Cannot detect format from extension; set 'format' explicitly.")
     params['format_detected'] = params['format'] if detected else None
 
-    _skip_if_created(module, params)
     _validate(
         module,
         params['source'],
