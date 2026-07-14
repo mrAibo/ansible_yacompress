@@ -25,7 +25,7 @@ The Galaxy publication job is manual. Pushing a tag creates the GitHub Release b
 
 ```bash
 python3 tests/test_release.py
-python3 scripts/release.py v1.5.0 --notes-output /tmp/release-notes.md
+python3 scripts/release.py v1.6.0 --notes-output /tmp/release-notes.md
 ```
 
 The validator rejects:
@@ -40,9 +40,9 @@ The validator rejects:
 rm -rf build collections
 mkdir -p build collections
 ansible-galaxy collection build --output-path build
-sha256sum build/mraibo-yacompress-1.5.0.tar.gz
+sha256sum build/mraibo-yacompress-1.6.0.tar.gz
 ansible-galaxy collection install \
-  build/mraibo-yacompress-1.5.0.tar.gz \
+  build/mraibo-yacompress-1.6.0.tar.gz \
   -p collections
 
 ANSIBLE_COLLECTIONS_PATH="$PWD/collections" \
@@ -50,6 +50,9 @@ ansible-doc mraibo.yacompress.multi_archive
 
 ANSIBLE_COLLECTIONS_PATH="$PWD/collections" \
 ansible-playbook -i localhost, -c local tests/collection_smoke.yml
+
+ANSIBLE_COLLECTIONS_PATH="$PWD/collections" \
+ansible-playbook --syntax-check -i localhost, examples/complete_backup.yml
 ```
 
 ## Create the tag and GitHub Release
@@ -59,13 +62,13 @@ Create an annotated tag from the tested `main` commit:
 ```bash
 git switch main
 git pull --ff-only
-git tag -a v1.5.0 -m "mraibo.yacompress 1.5.0"
-git push origin v1.5.0
+git tag -a v1.6.0 -m "mraibo.yacompress 1.6.0"
+git push origin v1.6.0
 ```
 
 The `Release` workflow then:
 
-1. checks that `v1.5.0`, `galaxy.yml`, and `CHANGELOG.md` agree;
+1. checks that `v1.6.0`, `galaxy.yml`, and `CHANGELOG.md` agree;
 2. builds the collection;
 3. installs and smoke-tests the exact built archive;
 4. produces `SHA256SUMS`;
@@ -79,7 +82,7 @@ The workflow uses `--verify-tag`; it will not silently create a missing tag.
 After reviewing the GitHub Release and downloaded checksum:
 
 1. Open **Actions → Release → Run workflow**.
-2. Select the tag, such as `v1.5.0`.
+2. Select the tag, such as `v1.6.0`.
 3. Leave `create_release` disabled when the release already exists.
 4. Enable `publish_galaxy`.
 5. Approve the `galaxy` environment deployment when protection rules require it.
@@ -91,8 +94,11 @@ Galaxy versions are immutable. If publication succeeds with incorrect content, i
 From a clean environment:
 
 ```bash
-ansible-galaxy collection install mraibo.yacompress:1.5.0
+ansible-galaxy collection install mraibo.yacompress:1.6.0
 ansible-doc mraibo.yacompress.multi_archive
+ansible-doc mraibo.yacompress.archive_verify
+ansible-doc mraibo.yacompress.archive_rotate
+ansible-doc mraibo.yacompress.archive_manifest
 ```
 
 Run at least one archive round-trip on a disposable path. For enterprise storage, use `tests/run_host_storage_validation.sh` on the exact target filesystem and security mode.
