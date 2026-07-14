@@ -21,7 +21,7 @@ jobs:
           sudo apt-get install -y -qq pigz zip unzip bzip2 xz-utils zstd
           python3 -m pip install --disable-pip-version-check -q ansible-core
       - name: Compile
-        run: python3 -m py_compile plugins/modules/multi_archive.py tests/test_multi_archive.py tests/test_failure_paths.py tests/test_formats_performance.py tests/test_multiple_sources.py
+        run: python3 -m py_compile plugins/modules/multi_archive.py tests/test_multi_archive.py tests/test_failure_paths.py tests/test_formats_performance.py tests/test_multiple_sources.py tests/test_sparse.py
       - name: Behavior tests
         run: python3 tests/test_multi_archive.py
       - name: Failure-path tests
@@ -30,6 +30,8 @@ jobs:
         run: python3 tests/test_formats_performance.py
       - name: Multiple-source tests
         run: python3 tests/test_multiple_sources.py
+      - name: Sparse-file tests
+        run: python3 tests/test_sparse.py
       - name: Legacy module documentation
         run: ANSIBLE_LIBRARY=. ansible-doc -t module multi_archive >/dev/null
       - name: Legacy Ansible smoke test
@@ -38,7 +40,9 @@ jobs:
         run: |
           mkdir -p build collections
           ansible-galaxy collection build --output-path build
-          ansible-galaxy collection install build/mraibo-yacompress-1.4.0.tar.gz -p collections
+          archive=$(find build -maxdepth 1 -name 'mraibo-yacompress-*.tar.gz' -print -quit)
+          test -n "$archive"
+          ansible-galaxy collection install "$archive" -p collections
       - name: Collection documentation
         run: ANSIBLE_COLLECTIONS_PATH="$PWD/collections" ansible-doc mraibo.yacompress.multi_archive >/dev/null
       - name: Collection smoke test

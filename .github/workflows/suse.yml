@@ -30,9 +30,9 @@ jobs:
         run: |
           mkdir -p build collections
           python3.11 -m ansible.cli.galaxy collection build --output-path build
-          python3.11 -m ansible.cli.galaxy collection install \
-            build/mraibo-yacompress-1.4.0.tar.gz \
-            -p collections
+          archive=$(find build -maxdepth 1 -name 'mraibo-yacompress-*.tar.gz' -print -quit)
+          test -n "$archive"
+          python3.11 -m ansible.cli.galaxy collection install "$archive" -p collections
 
       - name: Run SUSE smoke test
         env:
