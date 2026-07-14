@@ -52,12 +52,17 @@ jobs:
       - name: Install test requirements
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq pigz zip unzip bzip2 xz-utils zstd
+          sudo apt-get install -y -qq pigz zip unzip bzip2 xz-utils zstd rsync
           python3 -m pip install --disable-pip-version-check -q ansible-core
       - name: Prepare physical collection layout
         run: |
           mkdir -p /tmp/ansible_collections/mraibo/yacompress
-          cp -a "$GITHUB_WORKSPACE/." /tmp/ansible_collections/mraibo/yacompress/
+          rsync -a \
+            --exclude .git \
+            --exclude build \
+            --exclude collections \
+            --exclude sanity.log \
+            "$GITHUB_WORKSPACE/" /tmp/ansible_collections/mraibo/yacompress/
       - name: Official ansible-test sanity
         working-directory: /tmp/ansible_collections/mraibo/yacompress
         shell: bash
