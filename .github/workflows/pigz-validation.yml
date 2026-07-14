@@ -1,0 +1,113 @@
+name: Temporary pigz validation
+
+on:
+  push:
+    branches:
+      - agent/archive-safety-idempotency
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install runtime dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pigz zip unzip bzip2
+          python3 -m pip install --disable-pip-version-check ansible-core
+
+      - name: Show versions
+        run: |
+          python3 --version
+          ansible-playbook --version
+          pigz --version
+          tar --version | head -1
+          zip -v | head -2
+
+      - name: Run syntax and behavior tests
+        run: |
+          python3 -m py_compile multi_archive.py tests/test_multi_archive.py
+          python3 tests/test_multi_archive.py
+          ANSIBLE_LIBRARY=. ansible-doc -t module multi_archive >/dev/null
+          ANSIBLE_LIBRARY=. ANSIBLE_NOCOLOR=1 ansible-playbook -i localhost, -c local tests.yml
+
+      - name: Exercise explicit pigz path
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/yacompress-pigz"
+          mkdir -p "$root/source"
+          python3 - "$root/source/payload.bin" <<'PY'
+          import os
+          import sys
+
+          block = os.urandom(1024 * 1024)
+          with open(sys.argv[1], "wb") as handle:
+              for _ in range(128):
+                  handle.write(block)
+          PY
+          cat > "$root/pigz.yml" <<YAML
+          ---
+          - name: Validate explicit pigz compression
+            hosts: localhost
+            gather_facts: false
+            tasks:
+              - name: Create tar.gz with pigz
+                multi_archive:
+                  source: "$root/source"
+                  dest: "$root/source.tar.gz"
+                  state: archived
+                  compression: pigz
+                register: result
+
+              - name: Assert pigz was used
+                ansible.builtin.assert:
+                  that:
+                    - result.changed
+                    - result.compression_used == 'pigz'
+                    - result.format_detected == 'tar.gz'
+          YAML
+          ANSIBLE_LIBRARY=. ANSIBLE_NOCOLOR=1 ansible-playbook -i localhost, -c local "$root/pigz.yml"
+          pigz -t "$root/source.tar.gz"
+          tar -tzf "$root/source.tar.gz" | grep -Fx source/payload.bin
+
+      - name: Compare gzip and pigz execution
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/yacompress-benchmark"
+          mkdir -p "$root/source"
+          python3 - "$root/source/payload.bin" <<'PY'
+          import os
+          import sys
+
+          block = os.urandom(1024 * 1024)
+          with open(sys.argv[1], "wb") as handle:
+              for _ in range(256):
+                  handle.write(block)
+          PY
+          cat > "$root/benchmark.yml" <<YAML
+          ---
+          - name: Compare compressors
+            hosts: localhost
+            gather_facts: false
+            tasks:
+              - name: Create gzip archive
+                multi_archive:
+                  source: "$root/source"
+                  dest: "$root/gzip.tar.gz"
+                  state: archived
+                  compression: gzip
+              - name: Create pigz archive
+                multi_archive:
+                  source: "$root/source"
+                  dest: "$root/pigz.tar.gz"
+                  state: archived
+                  compression: pigz
+          YAML
+          /usr/bin/time -f 'combined gzip+pigz elapsed=%e sec' env ANSIBLE_LIBRARY=. ANSIBLE_NOCOLOR=1 ansible-playbook -i localhost, -c local "$root/benchmark.yml"
+          gzip -t "$root/gzip.tar.gz"
+          pigz -t "$root/pigz.tar.gz"
+          ls -lh "$root"/*.tar.gz
