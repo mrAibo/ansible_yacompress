@@ -426,14 +426,21 @@ def _build_archive_command(module, source, dest, fmt, compression, include, excl
     return cmd, used, threads_used, cwd
 
 
+def _tar_read_options(module, fmt):
+    if fmt == 'tar':
+        return []
+    compressor = {
+        'tar.gz': 'gzip', 'tar.bz2': 'bzip2',
+        'tar.xz': 'xz', 'tar.zst': 'zstd',
+    }[fmt]
+    return ['-I', module.get_bin_path(compressor, required=True)]
+
+
 def _unarchive_command(module, source, dest, fmt):
     if fmt == 'zip':
         return [module.get_bin_path('unzip', required=True), '-o', source, '-d', dest]
     tar = module.get_bin_path('tar', required=True)
-    if fmt != 'tar':
-        compressor = {'tar.gz': 'gzip', 'tar.bz2': 'bzip2', 'tar.xz': 'xz', 'tar.zst': 'zstd'}[fmt]
-        module.get_bin_path(compressor, required=True)
-    return [tar, '-xf', source, '-C', dest]
+    return [tar] + _tar_read_options(module, fmt) + ['-xf', source, '-C', dest]
 
 
 def _temporary_archive(parent, fmt):
@@ -445,7 +452,9 @@ def _verify_archive(module, path, fmt, compression_used=None):
     if fmt == 'zip':
         _run(module, [module.get_bin_path('unzip', required=True), '-tqq', path])
     else:
-        _run(module, [module.get_bin_path('tar', required=True), '-tf', path])
+        command = [module.get_bin_path('tar', required=True)]
+        command += _tar_read_options(module, fmt) + ['-tf', path]
+        _run(module, command)
 
 
 def _source_size(path):

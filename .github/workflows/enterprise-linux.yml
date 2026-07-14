@@ -1,0 +1,53 @@
+name: Enterprise Linux compatibility
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  enterprise-smoke:
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Ubuntu 22.04 / ansible-core 2.15
+            image: ubuntu:22.04
+          - name: Debian 11 / ansible-core 2.15
+            image: debian:11
+          - name: AlmaLinux 8 / ansible-core 2.15
+            image: almalinux:8
+          - name: AlmaLinux 9 / ansible-core 2.15
+            image: almalinux:9
+          - name: Oracle Linux 8 / ansible-core 2.15
+            image: oraclelinux:8
+          - name: Oracle Linux 9 / ansible-core 2.15
+            image: oraclelinux:9
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run enterprise compatibility test
+        env:
+          ANSIBLE_CORE_SPEC: ansible-core>=2.15,<2.16
+        run: |
+          set -o pipefail
+          docker run --rm \
+            -e ANSIBLE_CORE_SPEC="$ANSIBLE_CORE_SPEC" \
+            -v "$PWD:/workspace" \
+            -w /workspace \
+            "${{ matrix.image }}" \
+            sh -x tests/run_enterprise_smoke.sh 2>&1 | tee enterprise-smoke.log
+
+      - name: Upload enterprise diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: enterprise-${{ strategy.job-index }}-${{ github.run_id }}
+          path: enterprise-smoke.log
