@@ -1,0 +1,93 @@
+---
+- name: Create archive_rotate test directory
+  ansible.builtin.tempfile:
+    state: directory
+    suffix: archive-rotate
+  register: archive_rotate_temp
+
+- name: Create test archives
+  ansible.builtin.copy:
+    dest: "{{ archive_rotate_temp.path }}/backup-{{ item }}.tar.zst"
+    content: "backup {{ item }}\n"
+    mode: "0600"
+  loop:
+    - 1
+    - 2
+    - 3
+    - 4
+
+- name: Set deterministic modification times
+  ansible.builtin.file:
+    path: "{{ archive_rotate_temp.path }}/backup-{{ item.name }}.tar.zst"
+    modification_time: "{{ item.mtime }}"
+    access_time: "{{ item.mtime }}"
+  loop:
+    - {name: 1, mtime: '202001010101.01'}
+    - {name: 2, mtime: '202101010101.01'}
+    - {name: 3, mtime: '202201010101.01'}
+    - {name: 4, mtime: '202301010101.01'}
+
+- name: Preview rotation
+  mraibo.yacompress.archive_rotate:
+    directory: "{{ archive_rotate_temp.path }}"
+    patterns:
+      - 'backup-*.tar.zst'
+    keep_last: 2
+  check_mode: true
+  register: rotation_preview
+
+- name: Assert preview is read-only
+  ansible.builtin.assert:
+    that:
+      - rotation_preview is changed
+      - rotation_preview.planned_removals | length == 2
+      - rotation_preview.removed | length == 0
+      - rotation_preview.kept | length == 2
+
+- name: Confirm all files remain after preview
+  ansible.builtin.find:
+    paths: "{{ archive_rotate_temp.path }}"
+    patterns: 'backup-*.tar.zst'
+    file_type: file
+  register: files_after_preview
+
+- name: Assert preview changed nothing
+  ansible.builtin.assert:
+    that:
+      - files_after_preview.matched == 4
+
+- name: Apply rotation
+  mraibo.yacompress.archive_rotate:
+    directory: "{{ archive_rotate_temp.path }}"
+    patterns:
+      - 'backup-*.tar.zst'
+    keep_last: 2
+  register: rotation_applied
+
+- name: Assert oldest files were removed
+  ansible.builtin.assert:
+    that:
+      - rotation_applied is changed
+      - rotation_applied.removed | length == 2
+      - rotation_applied.kept | length == 2
+      - rotation_applied.bytes_reclaimed > 0
+
+- name: Run rotation again
+  mraibo.yacompress.archive_rotate:
+    directory: "{{ archive_rotate_temp.path }}"
+    patterns:
+      - 'backup-*.tar.zst'
+    keep_last: 2
+  register: rotation_second_run
+
+- name: Assert second run is idempotent
+  ansible.builtin.assert:
+    that:
+      - rotation_second_run is not changed
+      - rotation_second_run.removed | length == 0
+      - rotation_second_run.planned_removals | length == 0
+
+- name: Remove archive_rotate test directory
+  ansible.builtin.file:
+    path: "{{ archive_rotate_temp.path }}"
+    state: absent
