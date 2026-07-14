@@ -1,12 +1,12 @@
 name: Temporary pigz validation
 
 on:
-  push:
-    branches:
-      - agent/archive-safety-idempotency
   pull_request:
     branches:
       - main
+    types:
+      - reopened
+      - synchronize
 
 jobs:
   test:
