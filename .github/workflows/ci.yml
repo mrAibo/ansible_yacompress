@@ -12,7 +12,7 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - name: Install native tools
@@ -43,3 +43,13 @@ jobs:
         run: ANSIBLE_COLLECTIONS_PATH="$PWD/collections" ansible-doc mraibo.yacompress.multi_archive >/dev/null
       - name: Collection smoke test
         run: ANSIBLE_COLLECTIONS_PATH="$PWD/collections" ANSIBLE_NOCOLOR=1 ansible-playbook -i localhost, -c local tests/collection_smoke.yml
+      - name: Official ansible-test sanity
+        run: |
+          mkdir -p /tmp/ansible_collections/mraibo
+          ln -s "$GITHUB_WORKSPACE" /tmp/ansible_collections/mraibo/yacompress
+          cd /tmp/ansible_collections/mraibo/yacompress
+          ansible-test sanity --python 3.12
+      - name: Official ansible-test integration
+        run: |
+          cd /tmp/ansible_collections/mraibo/yacompress
+          ansible-test integration --python 3.12 multi_archive
