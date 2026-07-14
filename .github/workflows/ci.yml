@@ -63,6 +63,8 @@ jobs:
           ANSIBLE_COLLECTIONS_PATH="$PWD/collections" ansible-doc mraibo.yacompress.archive_verify >/dev/null
           ANSIBLE_COLLECTIONS_PATH="$PWD/collections" ansible-doc mraibo.yacompress.archive_rotate >/dev/null
           ANSIBLE_COLLECTIONS_PATH="$PWD/collections" ansible-doc mraibo.yacompress.archive_manifest >/dev/null
+      - name: Complete backup example syntax
+        run: ANSIBLE_COLLECTIONS_PATH="$PWD/collections" ANSIBLE_NOCOLOR=1 ansible-playbook --syntax-check -i localhost, examples/complete_backup.yml
       - name: Collection smoke test
         run: ANSIBLE_COLLECTIONS_PATH="$PWD/collections" ANSIBLE_NOCOLOR=1 ansible-playbook -i localhost, -c local tests/collection_smoke.yml
 
