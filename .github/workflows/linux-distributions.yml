@@ -1,0 +1,40 @@
+name: Linux distributions
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  distribution-smoke:
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Ubuntu 24.04
+            image: ubuntu:24.04
+          - name: Debian 12
+            image: debian:12
+          - name: Fedora 42
+            image: fedora:42
+          - name: Rocky Linux 9
+            image: rockylinux:9
+          - name: Arch Linux
+            image: archlinux:base
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run compatibility test
+        run: |
+          docker run --rm \
+            -v "$PWD:/workspace" \
+            -w /workspace \
+            "${{ matrix.image }}" \
+            sh tests/run_distribution_smoke.sh
