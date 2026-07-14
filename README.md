@@ -1,57 +1,65 @@
-# YaCompress Ansible Collection
+# YaCompress
 
-`mraibo.yacompress` is a Linux-focused Ansible Collection for fast archive creation and a transparent backup lifecycle. It uses native `tar`, `pigz`, `zstd`, `xz`, `bzip2`, and ZIP tools, while keeping verification, manifests, and retention as explicit operations.
+**A Linux-first archive lifecycle for Ansible.**
 
-For ordinary extraction that does not need this interface, consider `ansible.builtin.unarchive` first.
+Create standard archives with native tools, verify them, record SHA-256 manifests, and rotate retained backups through explicit Ansible modules.
+
+```text
+source data
+    ↓
+multi_archive
+    ↓
+archive_verify
+    ↓
+archive_manifest
+    ↓
+archive_rotate
+    ↓
+ready for restore testing
+```
+
+YaCompress does not invent a backup format. It produces ordinary TAR-family and ZIP archives that remain recoverable with standard system tools.
+
+> YaCompress is not a universal replacement for `community.general.archive`, `ansible.builtin.unarchive`, Borg, Restic, or Kopia. It is designed for Linux environments that want a transparent, Ansible-managed lifecycle for standard archive files.
+
+## Why use it?
+
+Most archive tasks stop after a compressed file is created. Operational backups usually need more:
+
+- native `pigz`, zstd, xz, bzip2, TAR, and ZIP backends;
+- verification before optional source deletion;
+- scheduled verification of retained archives;
+- deterministic SHA-256 manifests;
+- explicit count- and age-based retention;
+- Check Mode previews for destructive operations;
+- standard formats without repository lock-in;
+- tested behaviour across major Linux families.
+
+Read [Why YaCompress exists](docs/WHY_YACOMPRESS.md) for the detailed comparison with `community.general.archive`, direct shell commands, `ansible.builtin.unarchive`, and repository-based backup systems.
 
 ## Modules
 
-| Module | Purpose |
+| Module | Responsibility |
 |---|---|
-| `mraibo.yacompress.multi_archive` | Create and extract native archives with verification, threading, metrics, sparse-file support, and safe source deletion |
-| `mraibo.yacompress.archive_verify` | Read-only structural verification of an existing TAR-family or ZIP archive |
-| `mraibo.yacompress.archive_manifest` | Create or verify deterministic SHA-256 manifests for one file or a selected directory tree |
-| `mraibo.yacompress.archive_rotate` | Safely rotate regular files by count and/or age with Check Mode previews |
+| `mraibo.yacompress.multi_archive` | Create and extract native archives with verification, threading, metrics, sparse-file support, and guarded source deletion |
+| `mraibo.yacompress.archive_verify` | Perform read-only structural verification of an existing TAR-family or ZIP archive |
+| `mraibo.yacompress.archive_manifest` | Create or verify deterministic SHA-256 manifests for a file or selected directory tree |
+| `mraibo.yacompress.archive_rotate` | Rotate regular files by count and/or age with `min_keep` protection and Check Mode preview |
 
-See [`docs/BACKUP_WORKFLOW.md`](docs/BACKUP_WORKFLOW.md) and [`examples/complete_backup.yml`](examples/complete_backup.yml) for the complete create → verify → manifest → rotate workflow.
+The modules remain separate so that creation, verification, checksumming, and deletion can fail, retry, and report independently.
 
-## Highlights
+## Quick start
 
-- `tar`, `tar.gz`, `tar.bz2`, `tar.xz`, `tar.zst`, and ZIP archives
-- one source path or multiple source paths for TAR-family archives
-- sparse-file handling for virtual disks and other files with holes
-- parallel gzip with `pigz`; native zstd and xz threading
-- configurable compression levels and worker limits
-- atomic archive and manifest replacement
-- archive integrity verification before optional source deletion
-- standalone structural verification of retained backups
-- deterministic SHA-256 manifests detecting missing, changed, and unexpected files
-- retention by count and age with `min_keep` protection
-- Check Mode support without filesystem changes
-- official `ansible-test sanity` and integration coverage
-- continuous testing across Debian, Ubuntu, Fedora, Rocky, AlmaLinux, Oracle Linux, Arch, and openSUSE
-
-## Installation
-
-From Ansible Galaxy after publication:
+Install the Collection:
 
 ```bash
 ansible-galaxy collection install mraibo.yacompress:1.6.0
 ```
 
-Build and install from a checkout:
-
-```bash
-ansible-galaxy collection build --output-path build
-ansible-galaxy collection install build/mraibo-yacompress-1.6.0.tar.gz
-```
-
-Required commands depend on the selected format: `tar`, `gzip` or `pigz`, `bzip2`, `xz`, `zstd`, and `zip`/`unzip`.
-
-## Quick backup example
+Create and validate a backup:
 
 ```yaml
-- name: Create verified archive
+- name: Create a verified archive
   mraibo.yacompress.multi_archive:
     source:
       - /etc/myapp
@@ -62,156 +70,123 @@ Required commands depend on the selected format: `tar`, `gzip` or `pigz`, `bzip2
     threads: auto
     verify_archive: true
 
-- name: Independently verify archive structure
+- name: Verify the retained archive independently
   mraibo.yacompress.archive_verify:
     path: /srv/backups/application.tar.zst
 
-- name: Create SHA-256 manifest
+- name: Record its SHA-256 manifest
   mraibo.yacompress.archive_manifest:
     source: /srv/backups/application.tar.zst
     manifest: /srv/backups/application.tar.zst.manifest.json
+```
 
-- name: Rotate retained archives
+Apply retention only after the new backup passes the required checks:
+
+```yaml
+- name: Retain fourteen recent application backups
   mraibo.yacompress.archive_rotate:
     directory: /srv/backups
-    patterns: ['application-*.tar.zst']
+    patterns:
+      - 'application-*.tar.zst'
     keep_last: 14
     max_age_days: 45
     min_keep: 2
 ```
 
-Rotation should run only after the new archive passes structural and checksum verification. Manifests are separate files and should receive a matching retention policy.
+See [`examples/complete_backup.yml`](examples/complete_backup.yml) for a complete timestamped workflow, including separate archive and manifest retention.
 
-## Format selection
+## YaCompress and `community.general.archive`
 
-| Scenario | Suggested format |
+`community.general.archive` is mature, portable, Python-based, and a strong choice for ordinary archive creation. YaCompress has a different scope: native Linux compression plus the lifecycle around retained archives.
+
+| Need | Suggested choice |
 |---|---|
-| Frequent Linux backups | `tar.zst`, level 1–3 |
-| Gzip compatibility with parallel compression | `tar.gz` with `compression: pigz` |
-| Restrict shared-server CPU use | Set an explicit `threads` value |
-| Compact long-term archives | `tar.xz` |
-| JPEG, MP4, ZIP, and other already-compressed data | `tar` |
-| Broad desktop/Windows exchange | ZIP |
+| Straightforward portable archive creation | `community.general.archive` |
+| Ordinary extraction | `ansible.builtin.unarchive` |
+| Native pigz/zstd, sparse TAR, worker limits | YaCompress |
+| Verification before deleting sources | YaCompress |
+| Scheduled structural checks and SHA-256 manifests | YaCompress |
+| Count/age retention with Check Mode preview | YaCompress |
+| Deduplication, encryption, snapshots, remote repository | Borg, Restic, Kopia, or another repository-based system |
 
-Use the included benchmark suite on the actual target hardware before making performance claims or operational decisions.
+This is a scope comparison, not a universal performance claim. Run the included benchmark on the target hardware and dataset before making performance decisions.
 
-## `multi_archive` parameters
+Full capability comparison: [`docs/WHY_YACOMPRESS.md`](docs/WHY_YACOMPRESS.md).
 
-| Parameter | Required | Description |
-|---|---:|---|
-| `source` | yes | One source path, an archive to extract, or a list of source paths for TAR-family creation |
-| `dest` | yes | Destination archive or extraction directory |
-| `state` | yes | `archived` or `unarchived` |
-| `format` | no | `tar`, `tar.gz`, `tar.bz2`, `tar.xz`, `tar.zst`, or `zip`; inferred when omitted |
-| `compression` | no | For `tar.gz`: `gzip`, `pigz`, `auto`, or compatibility alias `none` |
-| `compression_level` | no | gzip/bzip2 `1-9`, xz `0-9`, zstd `1-19`, ZIP `0-9` |
-| `threads` | no | `auto` or a positive integer; explicit limits apply to pigz, xz, and zstd |
-| `verify_archive` | no | Verify the completed archive before replacing `dest` |
-| `sparse` | no | Enable GNU tar sparse-file detection for TAR-family creation |
-| `creates` | no | Skip the operation when this path already exists |
-| `delete_source` | no | Delete all sources after a successful, verified operation |
-| `include` | no | Relative paths or glob patterns; only with one directory source |
-| `exclude` | no | Archive path patterns to exclude |
+## Supported formats
 
-Without `creates`, an executed archive or extraction operation reports `changed: true`. The module does not pretend that rewriting an archive is idempotent.
+| Format | Native backend | Notable use |
+|---|---|---|
+| `tar` | GNU tar | Already-compressed data or fastest bundling |
+| `tar.gz` | gzip or pigz | Broad compatibility; optional parallel gzip |
+| `tar.bz2` | bzip2 | Compatibility with existing bzip2 workflows |
+| `tar.xz` | xz | Compact long-term archives |
+| `tar.zst` | zstd | Fast Linux backup workflows |
+| ZIP | zip/unzip | Desktop and Windows-oriented exchange |
 
-## Archive examples
+Compression levels and worker counts are explicit. Use `threads: auto` or a positive integer for supported native backends.
 
-### Multiple sources
+## Safety model
 
-```yaml
-- name: Archive application configuration and data
-  mraibo.yacompress.multi_archive:
-    source:
-      - /etc/myapp
-      - /opt/myapp-data
-      - /var/lib/myapp
-    dest: /srv/backups/myapp.tar.zst
-    state: archived
-    compression_level: 3
-    threads: auto
-    verify_archive: true
-```
+YaCompress is intentionally conservative around destructive operations:
 
-Each source is stored under its base name. Base names must be unique, source paths must not overlap, and `dest` must not be inside a source. Multiple sources are intentionally limited to TAR-family formats.
+- Check Mode does not change the filesystem;
+- new archives and manifests are written beside the destination and replaced atomically;
+- unsafe source, destination, include, and manifest paths are rejected;
+- verification, manifest discovery, and rotation do not follow symbolic links;
+- `delete_source: true` runs only after successful archive verification;
+- partial deletion failures report deleted and remaining paths;
+- rotation protects the newest `min_keep` files;
+- a checksum manifest is explicitly not treated as a digital signature.
 
-### Sparse virtual disk
+Structural checks and checksums do not replace restore testing. Active databases and mutable applications require an application-aware dump, snapshot, lock, or quiesce step before archiving.
 
-```yaml
-- name: Archive a sparse virtual disk image
-  mraibo.yacompress.multi_archive:
-    source: /var/lib/libvirt/images/server.raw
-    dest: /srv/backups/server.raw.tar.zst
-    state: archived
-    sparse: true
-    compression_level: 1
-    threads: auto
-    verify_archive: true
-```
-
-### Limit pigz CPU use
-
-```yaml
-- name: Archive with four pigz workers
-  mraibo.yacompress.multi_archive:
-    source: /srv/data
-    dest: /srv/backups/data.tar.gz
-    state: archived
-    compression: pigz
-    compression_level: 3
-    threads: 4
-```
-
-### Extract once
-
-```yaml
-- name: Extract application bundle once
-  mraibo.yacompress.multi_archive:
-    source: /srv/releases/application.tar.zst
-    dest: /opt/application
-    creates: /opt/application/bin/application
-    state: unarchived
-```
-
-## Safety behavior
-
-- Check Mode creates no files or directories; rotation reports planned removals.
-- New archives and manifests are written beside their destinations and replaced atomically.
-- Source/destination overlap, unsafe include paths, and overlapping multiple sources are rejected.
-- Symbolic links are not followed by verification, rotation, or manifest discovery.
-- `delete_source: true` never runs before successful archive verification.
-- Rotation preserves the newest `min_keep` files, defaulting to one.
-- Manifest entry paths are validated before filesystem access.
-- A checksum manifest is not a digital signature. Protect or sign it when malicious modification is in scope.
-
-Structural and checksum verification do not replace restore testing. Mutable databases and applications require their own snapshot, dump, or quiesce procedure before archiving.
-
-## Documentation
-
-- [`docs/BACKUP_WORKFLOW.md`](docs/BACKUP_WORKFLOW.md) — complete lifecycle and operational ordering
-- [`docs/ARCHIVE_VERIFY.md`](docs/ARCHIVE_VERIFY.md) — structural verification
-- [`docs/ARCHIVE_ROTATE.md`](docs/ARCHIVE_ROTATE.md) — retention and deletion safety
-- [`docs/ARCHIVE_MANIFEST.md`](docs/ARCHIVE_MANIFEST.md) — SHA-256 manifests
-- [`docs/ENTERPRISE_STORAGE.md`](docs/ENTERPRISE_STORAGE.md) — NFS, SELinux, FIPS, sparse and large-file validation
-- [`docs/BENCHMARKING.md`](docs/BENCHMARKING.md) — reproducible performance comparison
-- [`docs/COMPATIBILITY.md`](docs/COMPATIBILITY.md) — tested Linux matrix and support boundaries
-- [`docs/RELEASING.md`](docs/RELEASING.md) — release and Galaxy publishing process
-
-## Quality and compatibility
+## Compatibility and quality
 
 Every pull request runs:
 
-- Python behavior and destructive failure-path tests;
-- real gzip, pigz, bzip2, xz, zstd, TAR, and ZIP tests;
-- tests for verification, rotation, manifests, multiple sources, and sparse files;
-- legacy and installed-collection smoke tests;
+- Python behaviour and destructive failure-path tests;
+- native gzip, pigz, bzip2, xz, zstd, TAR, and ZIP round trips;
+- tests for multiple sources, sparse files, verification, manifests, and rotation;
 - `ansible-test sanity` without ignore files;
-- `ansible-test integration` for all collection modules;
-- modern, enterprise, SUSE, and large-file storage workflows.
+- `ansible-test integration` for all Collection modules;
+- modern and enterprise Linux matrices;
+- openSUSE validation;
+- a sparse-file storage test with a logical file larger than 5 GiB.
 
-The container matrix is a strong compatibility signal, but it does not replace validation on the exact SLES/RHEL service pack, repositories, Python, Ansible, storage, and security policy used in production.
+Continuously tested families include Debian, Ubuntu, Fedora, Rocky Linux, AlmaLinux, Oracle Linux, Arch Linux, and openSUSE. Container validation is a strong compatibility signal, but production use should still be tested on the exact OS release, storage, security policy, and native tool versions.
 
-## Benchmarking
+## Documentation
+
+### Start here
+
+- [`docs/WHY_YACOMPRESS.md`](docs/WHY_YACOMPRESS.md) — purpose, alternatives, honest capability comparison, and use-case boundaries
+- [`docs/BACKUP_WORKFLOW.md`](docs/BACKUP_WORKFLOW.md) — complete create → verify → manifest → rotate workflow
+- [`examples/complete_backup.yml`](examples/complete_backup.yml) — runnable workflow example
+
+### Module guides
+
+- [`docs/ARCHIVE_VERIFY.md`](docs/ARCHIVE_VERIFY.md)
+- [`docs/ARCHIVE_MANIFEST.md`](docs/ARCHIVE_MANIFEST.md)
+- [`docs/ARCHIVE_ROTATE.md`](docs/ARCHIVE_ROTATE.md)
+
+### Operations and maintenance
+
+- [`docs/COMPATIBILITY.md`](docs/COMPATIBILITY.md) — tested systems and support boundaries
+- [`docs/ENTERPRISE_STORAGE.md`](docs/ENTERPRISE_STORAGE.md) — NFS, SELinux, FIPS, sparse files, and large-file validation
+- [`docs/BENCHMARKING.md`](docs/BENCHMARKING.md) — reproducible performance methodology
+- [`docs/RELEASING.md`](docs/RELEASING.md) — releases and Galaxy publication
+
+## Build from source
+
+```bash
+ansible-galaxy collection build --output-path build
+ansible-galaxy collection install build/mraibo-yacompress-1.6.0.tar.gz
+```
+
+Native command requirements depend on the selected format: `tar`, `gzip` or `pigz`, `bzip2`, `xz`, `zstd`, and `zip`/`unzip`.
+
+## Benchmark on your system
 
 ```bash
 ANSIBLE_COLLECTIONS_PATH="$PWD/collections" \
@@ -221,25 +196,16 @@ python3 benchmarks/run.py \
   --iterations 3
 ```
 
-See [`docs/BENCHMARKING.md`](docs/BENCHMARKING.md) for methodology and caveats.
+The benchmark records raw CSV and Markdown results. Small CI smoke runs validate the framework but are not suitable for marketing conclusions.
 
-## Local testing
+## Project direction
 
-```bash
-python3 tests/test_multi_archive.py
-python3 tests/test_failure_paths.py
-python3 tests/test_formats_performance.py
-python3 tests/test_multiple_sources.py
-python3 tests/test_sparse.py
-python3 tests/test_archive_verify.py
-python3 tests/test_archive_rotate.py
-python3 tests/test_archive_manifest.py
-python3 tests/test_release.py
-ANSIBLE_LIBRARY=. ansible-playbook -i localhost, -c local tests.yml
+The project goal is precise:
 
-# Run from an ansible_collections/mraibo/yacompress checkout:
-ansible-test sanity --python 3.12
-ansible-test integration --python 3.12 multi_archive archive_verify archive_rotate archive_manifest
-```
+> Become a dependable Ansible solution for managing the lifecycle of standard Linux archives—not a proprietary backup repository and not a replacement for every existing archive tool.
 
-For legacy playbooks, the root `multi_archive.py` symlink can still be exposed through `ANSIBLE_LIBRARY`.
+New features should improve recoverability, operational safety, or transparency. Features that only increase surface area should remain out.
+
+## License
+
+GPL-3.0-or-later.
