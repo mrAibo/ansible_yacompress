@@ -37,9 +37,17 @@ jobs:
         env:
           ANSIBLE_CORE_SPEC: ansible-core>=2.15,<2.16
         run: |
+          set -o pipefail
           docker run --rm \
             -e ANSIBLE_CORE_SPEC="$ANSIBLE_CORE_SPEC" \
             -v "$PWD:/workspace" \
             -w /workspace \
             "${{ matrix.image }}" \
-            sh tests/run_enterprise_smoke.sh
+            sh -x tests/run_enterprise_smoke.sh 2>&1 | tee enterprise-smoke.log
+
+      - name: Upload enterprise diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: enterprise-${{ strategy.job-index }}-${{ github.run_id }}
+          path: enterprise-smoke.log
