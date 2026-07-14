@@ -9,7 +9,7 @@ __metaclass__ = type
 DOCUMENTATION = r"""
 ---
 module: multi_archive
-short_description: Creates and extracts archives with native Linux tools.
+short_description: Creates and extracts archives with native Linux tools
 version_added: "1.3.0"
 description:
   - Creates and extracts tar, tar.gz, tar.bz2, tar.xz, tar.zst, and zip archives.
@@ -17,48 +17,56 @@ description:
   - Creates archives atomically and can verify them before replacing the destination.
 options:
   source:
+    description: Source file or directory to archive, or archive to extract.
     type: path
     required: true
   dest:
+    description: Destination archive file or extraction directory.
     type: path
     required: true
   format:
+    description: Archive format, inferred from the relevant archive path when omitted.
     type: str
     choices: [tar, tar.gz, tar.bz2, tar.xz, tar.zst, zip]
   compression:
+    description:
+      - Compression executable selection for C(tar.gz).
+      - C(auto) prefers C(pigz) and falls back to C(gzip).
     type: str
     choices: [none, gzip, pigz, auto]
     default: none
-    description:
-      - Applies only to tar.gz.
-      - auto prefers pigz and falls back to gzip.
   compression_level:
+    description: Compression level. The valid range depends on the selected format.
     type: int
-    description: Compression level. Valid range depends on the selected format.
   threads:
+    description:
+      - C(auto) uses the compressor default or all available workers where supported.
+      - A positive integer limits C(pigz), C(xz), or C(zstd) worker threads.
     type: raw
     default: auto
-    description:
-      - auto uses the compressor default or all available threads where supported.
-      - A positive integer limits pigz, xz, or zstd worker threads.
   verify_archive:
+    description: Verify the completed archive before replacing the destination.
     type: bool
     default: false
-    description: Verify the completed archive before replacing the destination.
   state:
+    description: Whether to create or extract an archive.
     type: str
     required: true
     choices: [archived, unarchived]
   delete_source:
+    description: Delete the source only after a successful operation and required verification.
     type: bool
     default: false
   creates:
+    description: Skip the operation when this path already exists.
     type: path
   include:
+    description: Relative source paths or glob patterns to include while archiving.
     type: list
     elements: str
     default: []
   exclude:
+    description: Archive path patterns to exclude while archiving.
     type: list
     elements: str
     default: []
@@ -87,30 +95,50 @@ EXAMPLES = r"""
 """
 
 RETURN = r"""
+original_source:
+  description: Source path supplied to the module.
+  type: str
+  returned: always
+destination:
+  description: Destination path supplied to the module.
+  type: str
+  returned: always
 compression_used:
+  description: Native compressor used to create the archive.
   type: str
   returned: state=archived
 threads_used:
+  description: Thread setting applied to the selected compressor.
   type: raw
   returned: state=archived
 compression_level_used:
+  description: Compression level applied to the selected compressor.
   type: int
   returned: state=archived and compression_level was set
 elapsed_seconds:
+  description: Elapsed archive creation time in seconds.
   type: float
   returned: state=archived
 source_bytes:
+  description: Total source file payload size measured from filesystem metadata.
   type: int
   returned: state=archived
 archive_bytes:
+  description: Final archive file size.
   type: int
   returned: state=archived
 compression_ratio:
+  description: Archive size divided by source payload size.
   type: float
   returned: state=archived and source_bytes is non-zero
 throughput_mib_per_second:
+  description: Source payload size divided by elapsed archive creation time.
   type: float
   returned: state=archived and elapsed time is non-zero
+format_detected:
+  description: Archive format inferred from the source or destination extension.
+  type: str
+  returned: when format was inferred
 """
 
 import glob
