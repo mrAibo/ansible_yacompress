@@ -32,8 +32,10 @@ options:
     default: true
 attributes:
   check_mode:
+    description: Performs the same read-only verification in check mode.
     support: full
   diff_mode:
+    description: Diff mode is not applicable because the module never changes files.
     support: none
 '''
 
