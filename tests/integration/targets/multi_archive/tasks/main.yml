@@ -1,0 +1,101 @@
+---
+- name: Create integration test workspace
+  ansible.builtin.tempfile:
+    state: directory
+    prefix: yacompress-integration-
+  register: workspace
+
+- name: Exercise collection module
+  block:
+    - name: Create source directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: "0755"
+      loop:
+        - "{{ workspace.path }}/config"
+        - "{{ workspace.path }}/data"
+
+    - name: Create test payloads
+      ansible.builtin.copy:
+        dest: "{{ item.path }}"
+        content: "{{ item.content }}"
+        mode: "0644"
+      loop:
+        - path: "{{ workspace.path }}/config/app.conf"
+          content: "enabled=true\n"
+        - path: "{{ workspace.path }}/data/payload.txt"
+          content: "integration payload\n"
+
+    - name: Create verified multi-source zstd archive
+      mraibo.yacompress.multi_archive:
+        source:
+          - "{{ workspace.path }}/config"
+          - "{{ workspace.path }}/data"
+        dest: "{{ workspace.path }}/bundle.tar.zst"
+        state: archived
+        compression_level: 3
+        threads: 2
+        verify_archive: true
+      register: archive_result
+
+    - name: Validate archive result contract
+      ansible.builtin.assert:
+        that:
+          - archive_result is changed
+          - archive_result.compression_used == 'zstd'
+          - archive_result.threads_used == 2
+          - archive_result.compression_level_used == 3
+          - archive_result.source_bytes > 0
+          - archive_result.archive_bytes > 0
+          - archive_result.elapsed_seconds > 0
+          - archive_result.deleted_sources == []
+
+    - name: Extract archive through collection module
+      mraibo.yacompress.multi_archive:
+        source: "{{ workspace.path }}/bundle.tar.zst"
+        dest: "{{ workspace.path }}/restored"
+        state: unarchived
+
+    - name: Read restored files
+      ansible.builtin.slurp:
+        src: "{{ item }}"
+      loop:
+        - "{{ workspace.path }}/restored/config/app.conf"
+        - "{{ workspace.path }}/restored/data/payload.txt"
+      register: restored
+
+    - name: Validate restored content
+      ansible.builtin.assert:
+        that:
+          - restored.results[0].content | b64decode == 'enabled=true\n'
+          - restored.results[1].content | b64decode == 'integration payload\n'
+
+    - name: Predict archive creation in check mode
+      mraibo.yacompress.multi_archive:
+        source: "{{ workspace.path }}/config"
+        dest: "{{ workspace.path }}/check-only.tar.gz"
+        state: archived
+        compression: auto
+      check_mode: true
+      register: check_result
+
+    - name: Confirm check mode reports change
+      ansible.builtin.assert:
+        that:
+          - check_result is changed
+
+    - name: Confirm check mode created no archive
+      ansible.builtin.stat:
+        path: "{{ workspace.path }}/check-only.tar.gz"
+      register: check_archive
+
+    - name: Validate check-mode safety
+      ansible.builtin.assert:
+        that:
+          - not check_archive.stat.exists
+  always:
+    - name: Remove integration test workspace
+      ansible.builtin.file:
+        path: "{{ workspace.path }}"
+        state: absent
