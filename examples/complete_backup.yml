@@ -1,0 +1,78 @@
+---
+- name: Create, verify, manifest, and rotate application backups
+  hosts: all
+  become: true
+  vars:
+    backup_directory: /srv/backups/application
+    backup_name: "application-{{ ansible_date_time.iso8601_basic_short }}.tar.zst"
+    backup_path: "{{ backup_directory }}/{{ backup_name }}"
+    manifest_path: "{{ backup_path }}.manifest.json"
+
+  tasks:
+    - name: Ensure backup directory exists
+      ansible.builtin.file:
+        path: "{{ backup_directory }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0750"
+
+    - name: Create verified application archive
+      mraibo.yacompress.multi_archive:
+        source:
+          - /etc/myapp
+          - /var/lib/myapp
+        dest: "{{ backup_path }}"
+        state: archived
+        compression_level: 3
+        threads: auto
+        verify_archive: true
+      register: archive_result
+
+    - name: Independently verify archive structure
+      mraibo.yacompress.archive_verify:
+        path: "{{ backup_path }}"
+      register: structure_result
+
+    - name: Create deterministic SHA-256 manifest
+      mraibo.yacompress.archive_manifest:
+        source: "{{ backup_path }}"
+        manifest: "{{ manifest_path }}"
+        state: present
+      register: manifest_result
+
+    - name: Verify the new manifest
+      mraibo.yacompress.archive_manifest:
+        source: "{{ backup_path }}"
+        manifest: "{{ manifest_path }}"
+        state: verified
+
+    - name: Rotate old archives
+      mraibo.yacompress.archive_rotate:
+        directory: "{{ backup_directory }}"
+        patterns:
+          - 'application-*.tar.zst'
+        keep_last: 14
+        max_age_days: 45
+        min_keep: 2
+      register: rotation_result
+
+    - name: Rotate orphaned manifest files with the same retention policy
+      mraibo.yacompress.archive_rotate:
+        directory: "{{ backup_directory }}"
+        patterns:
+          - 'application-*.tar.zst.manifest.json'
+        keep_last: 14
+        max_age_days: 45
+        min_keep: 2
+
+    - name: Report backup outcome
+      ansible.builtin.debug:
+        msg:
+          archive: "{{ backup_path }}"
+          archive_bytes: "{{ archive_result.archive_bytes }}"
+          compression_ratio: "{{ archive_result.compression_ratio }}"
+          structure_valid: "{{ structure_result.valid }}"
+          manifest_sha256: "{{ manifest_result.manifest_sha256 }}"
+          rotated_archives: "{{ rotation_result.removed | length }}"
+          reclaimed_bytes: "{{ rotation_result.bytes_reclaimed }}"

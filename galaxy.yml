@@ -1,11 +1,11 @@
 ---
 namespace: mraibo
 name: yacompress
-version: 1.5.0
+version: 1.6.0
 readme: README.md
 authors:
   - Aleksej Voronin (@mrAibo)
-description: Fast and safe native archive creation and extraction for Ansible.
+description: Fast and safe native backup archive tooling for Ansible.
 license:
   - GPL-3.0-or-later
 tags:
