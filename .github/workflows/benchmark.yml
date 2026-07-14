@@ -1,0 +1,59 @@
+name: Archive benchmark
+
+on:
+  workflow_dispatch:
+    inputs:
+      size_mib:
+        description: Size of the large compressible dataset in MiB
+        required: true
+        default: "128"
+      small_files:
+        description: Number of files in the metadata-heavy dataset
+        required: true
+        default: "5000"
+      iterations:
+        description: Measured iterations per case and dataset
+        required: true
+        default: "3"
+
+permissions:
+  contents: read
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install native tools and Ansible
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq pigz zip unzip bzip2 xz-utils zstd
+          python3 -m pip install --disable-pip-version-check -q ansible-core
+
+      - name: Install benchmark collections
+        run: |
+          mkdir -p build collections
+          ansible-galaxy collection build --output-path build
+          ansible-galaxy collection install build/mraibo-yacompress-1.4.0.tar.gz -p collections
+          ansible-galaxy collection install community.general -p collections
+
+      - name: Run benchmark
+        env:
+          ANSIBLE_COLLECTIONS_PATH: ${{ github.workspace }}/collections
+          ANSIBLE_NOCOLOR: "1"
+        run: |
+          python3 benchmarks/run.py \
+            --size-mib "${{ inputs.size_mib }}" \
+            --small-files "${{ inputs.small_files }}" \
+            --iterations "${{ inputs.iterations }}"
+
+      - name: Show summary
+        run: cat benchmark-results/results.md
+
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@v4
+        with:
+          name: archive-benchmark-${{ github.run_id }}
+          path: benchmark-results/
