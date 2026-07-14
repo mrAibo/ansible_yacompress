@@ -1,0 +1,66 @@
+name: Apply storage README updates
+
+on:
+  push:
+    branches:
+      - agent/enterprise-storage-validation
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/enterprise-storage-validation
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update README
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('README.md')
+          text = path.read_text()
+          replacements = [
+              (
+                  '- one source path or multiple source paths for TAR-family archives\n',
+                  '- one source path or multiple source paths for TAR-family archives\n- sparse-file handling for virtual disks and other files with holes\n',
+              ),
+              ('build/mraibo-yacompress-1.4.0.tar.gz', 'build/mraibo-yacompress-1.5.0.tar.gz'),
+              (
+                  '| `verify_archive` | no | Verify the completed archive before replacing `dest` |\n',
+                  '| `verify_archive` | no | Verify the completed archive before replacing `dest` |\n| `sparse` | no | Enable GNU tar sparse-file detection for TAR-family archive creation |\n',
+              ),
+              (
+                  '### Limit pigz CPU use\n',
+                  '''### Archive a sparse virtual disk\n\n```yaml\n- name: Archive a sparse virtual disk image\n  mraibo.yacompress.multi_archive:\n    source: /var/lib/libvirt/images/server.raw\n    dest: /srv/backups/server.raw.tar.zst\n    state: archived\n    sparse: true\n    compression_level: 1\n    threads: auto\n    verify_archive: true\n```\n\n`sparse` is supported for TAR-family creation and is intentionally rejected for ZIP and extraction.\n\n### Limit pigz CPU use\n''',
+              ),
+              (
+                  '- `threads_used`\n',
+                  '- `threads_used`\n- `sparse_used`\n',
+              ),
+              (
+                  'The SUSE container test is a useful compatibility signal, but it does not replace validation on the exact SLES service pack, repositories, Python, Ansible, storage, and security policy used in production.\n',
+                  'The SUSE container test is a useful compatibility signal, but it does not replace validation on the exact SLES service pack, repositories, Python, Ansible, storage, and security policy used in production.\n\nA separate storage workflow validates a sparse file larger than 5 GiB, replacement of an existing archive, extraction, restored sparse allocation, and cleanup on a separate tmpfs destination. See [`docs/ENTERPRISE_STORAGE.md`](docs/ENTERPRISE_STORAGE.md) for real NFS, SELinux enforcing, FIPS, and clustered-filesystem validation.\n',
+              ),
+              (
+                  'python3 tests/test_multiple_sources.py\n',
+                  'python3 tests/test_multiple_sources.py\npython3 tests/test_sparse.py\n',
+              ),
+          ]
+          for old, new in replacements:
+              if old not in text:
+                  raise SystemExit('expected README block not found: %r' % old[:80])
+              text = text.replace(old, new, 1)
+          path.write_text(text)
+          PY
+
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add README.md
+          git commit -m 'Document sparse archives and storage validation'
+          git push origin HEAD:agent/enterprise-storage-validation
