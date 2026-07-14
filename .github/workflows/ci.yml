@@ -12,14 +12,14 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - name: Install native tools
         run: |
-          sudo apt-get update
-          sudo apt-get install -y pigz zip unzip bzip2 xz-utils zstd
-          python3 -m pip install --disable-pip-version-check ansible-core
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq pigz zip unzip bzip2 xz-utils zstd
+          python3 -m pip install --disable-pip-version-check -q ansible-core
       - name: Compile
         run: python3 -m py_compile plugins/modules/multi_archive.py tests/test_multi_archive.py tests/test_failure_paths.py tests/test_formats_performance.py tests/test_multiple_sources.py
       - name: Behavior tests
@@ -43,13 +43,24 @@ jobs:
         run: ANSIBLE_COLLECTIONS_PATH="$PWD/collections" ansible-doc mraibo.yacompress.multi_archive >/dev/null
       - name: Collection smoke test
         run: ANSIBLE_COLLECTIONS_PATH="$PWD/collections" ANSIBLE_NOCOLOR=1 ansible-playbook -i localhost, -c local tests/collection_smoke.yml
-      - name: Official ansible-test sanity
+
+  ansible-test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install test requirements
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq pigz zip unzip bzip2 xz-utils zstd
+          python3 -m pip install --disable-pip-version-check -q ansible-core
+      - name: Prepare collection path
         run: |
           mkdir -p /tmp/ansible_collections/mraibo
           ln -s "$GITHUB_WORKSPACE" /tmp/ansible_collections/mraibo/yacompress
-          cd /tmp/ansible_collections/mraibo/yacompress
-          ansible-test sanity --python 3.12
+      - name: Official ansible-test sanity
+        working-directory: /tmp/ansible_collections/mraibo/yacompress
+        run: ansible-test sanity --python 3.12
       - name: Official ansible-test integration
-        run: |
-          cd /tmp/ansible_collections/mraibo/yacompress
-          ansible-test integration --python 3.12 multi_archive
+        working-directory: /tmp/ansible_collections/mraibo/yacompress
+        run: ansible-test integration --python 3.12 multi_archive
