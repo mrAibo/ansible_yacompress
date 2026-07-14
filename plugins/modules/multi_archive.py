@@ -51,6 +51,12 @@ options:
     description: Verify the completed archive before replacing the destination.
     type: bool
     default: false
+  sparse:
+    description:
+      - Enable GNU tar sparse-file detection while creating TAR-family archives.
+      - Useful for virtual disk images, database files, and other files with holes.
+    type: bool
+    default: false
   state:
     description: Whether to create or extract an archive.
     type: str
@@ -117,6 +123,10 @@ compression_used:
 threads_used:
   description: Thread setting applied to the selected compressor.
   type: raw
+  returned: state=archived
+sparse_used:
+  description: Whether GNU tar sparse-file detection was enabled.
+  type: bool
   returned: state=archived
 compression_level_used:
   description: Compression level applied to the selected compressor.
@@ -390,7 +400,7 @@ def _compressor(module, fmt, compression, level, threads):
 
 
 def _build_archive_command(module, source, dest, fmt, compression, include, exclude,
-                           compression_level=None, threads='auto'):
+                           compression_level=None, threads='auto', sparse=False):
     sources = source if isinstance(source, list) else [source]
     sources = [os.path.abspath(item) for item in sources]
     selected = _expand_includes(module, sources[0], include) if include else []
@@ -398,6 +408,8 @@ def _build_archive_command(module, source, dest, fmt, compression, include, excl
     if fmt != 'zip':
         tar = module.get_bin_path('tar', required=True)
         cmd = [tar] + comp + ['-cf', dest]
+        if sparse:
+            cmd.append('--sparse')
         for pattern in exclude:
             cmd += ['--exclude', pattern]
         if selected:
@@ -441,6 +453,15 @@ def _unarchive_command(module, source, dest, fmt):
         return [module.get_bin_path('unzip', required=True), '-o', source, '-d', dest]
     tar = module.get_bin_path('tar', required=True)
     return [tar] + _tar_read_options(module, fmt) + ['-xf', source, '-C', dest]
+
+
+def _validate_sparse(module, state, fmt, sparse):
+    if not sparse:
+        return
+    if state != 'archived':
+        module.fail_json(msg="sparse applies only when state=archived")
+    if fmt == 'zip':
+        module.fail_json(msg="sparse is supported only for TAR-family formats")
 
 
 def _temporary_archive(parent, fmt):
@@ -497,13 +518,14 @@ def archive(module, **params):
     verify = params.get('verify_archive', False) or params['delete_source']
     cmd, used, threads_used, cwd = _build_archive_command(
         module, sources, dest, fmt, params['compression'], params['include'], params['exclude'],
-        level, threads,
+        level, threads, params.get('sparse', False),
     )
     if module.check_mode:
         module.exit_json(
             changed=True, original_source=original_source, destination=dest,
             compression_used=used, threads_used=threads_used,
-            compression_level_used=level, format_detected=params['format_detected'],
+            compression_level_used=level, sparse_used=params.get('sparse', False),
+            format_detected=params['format_detected'],
             msg="(check mode) would archive %s -> %s" % (original_source, dest),
         )
     source_bytes = sum(_source_size(item) for item in sources)
@@ -540,7 +562,8 @@ def archive(module, **params):
     result = {
         'changed': True, 'original_source': original_source, 'destination': dest,
         'compression_used': used, 'threads_used': threads_used,
-        'compression_level_used': level, 'format_detected': params['format_detected'],
+        'compression_level_used': level, 'sparse_used': params.get('sparse', False),
+        'format_detected': params['format_detected'],
         'elapsed_seconds': round(elapsed, 6), 'source_bytes': source_bytes,
         'archive_bytes': archive_bytes,
         'throughput_mib_per_second': round(source_bytes / 1048576.0 / elapsed, 3),
@@ -590,6 +613,7 @@ def main():
             'compression_level': {'type': 'int', 'default': None},
             'threads': {'type': 'raw', 'default': 'auto'},
             'verify_archive': {'type': 'bool', 'default': False},
+            'sparse': {'type': 'bool', 'default': False},
             'state': {'type': 'str', 'required': True, 'choices': ['archived', 'unarchived']},
             'delete_source': {'type': 'bool', 'default': False},
             'creates': {'type': 'path', 'default': None},
@@ -607,6 +631,7 @@ def main():
     if not params['format']:
         module.fail_json(msg="Cannot detect format from extension; set 'format' explicitly.")
     params['format_detected'] = params['format'] if detected else None
+    _validate_sparse(module, params['state'], params['format'], params['sparse'])
     _validate(
         module, params['source'], params['dest'], params['state'],
         params['include'], params['exclude'], params['format'],
