@@ -173,7 +173,19 @@ class MultiArchiveTests(unittest.TestCase):
             compression='none',
             format_detected='zip',
         )
+        outside = self.root / 'outside'
+        outside.mkdir()
+        (outside / 'secret.txt').write_text('secret', encoding='utf-8')
+        (self.source / 'link').symlink_to(outside, target_is_directory=True)
+
         call_module(multi_archive.archive, self.module, **params)
+        members = subprocess.check_output(
+            ['unzip', '-Z1', str(archive)],
+            universal_newlines=True,
+        ).splitlines()
+        self.assertIn('source/link', members)
+        self.assertNotIn('source/link/secret.txt', members)
+
         (self.source / 'two.log').unlink()
         call_module(multi_archive.archive, self.module, **params)
 
