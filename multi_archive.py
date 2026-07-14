@@ -310,7 +310,7 @@ def _build_archive_command(module, source, dest, fmt, compression, include, excl
         cwd = os.path.dirname(source)
         names = [os.path.basename(source) or '.']
     names = [('./' + name) if name.startswith('-') else name for name in names]
-    cmd = [zip_bin, '-q', '-r', dest] + names
+    cmd = [zip_bin, '-q', '-y', '-r', dest] + names
     for pattern in exclude:
         cmd += ['-x', pattern]
     return cmd, used, cwd
