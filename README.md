@@ -6,6 +6,7 @@
 
 - `tar`, `tar.gz`, `tar.bz2`, `tar.xz`, `tar.zst`, and ZIP archives
 - one source path or multiple source paths for TAR-family archives
+- sparse-file handling for virtual disks and other files with holes
 - parallel gzip with `compression: pigz`
 - automatic pigz fallback with `compression: auto`
 - native multithreading for zstd and xz
@@ -27,7 +28,7 @@ Build and install the collection from a checkout:
 
 ```bash
 ansible-galaxy collection build --output-path build
-ansible-galaxy collection install build/mraibo-yacompress-1.4.0.tar.gz
+ansible-galaxy collection install build/mraibo-yacompress-1.5.0.tar.gz
 ```
 
 Use the fully qualified collection name:
@@ -72,6 +73,7 @@ These are starting points. Use the included benchmark suite on the actual target
 | `compression_level` | no | gzip/bzip2 `1-9`, xz `0-9`, zstd `1-19`, ZIP `0-9` |
 | `threads` | no | `auto` or a positive integer; explicit limits apply to pigz, xz, and zstd |
 | `verify_archive` | no | Verify the completed archive before replacing `dest` |
+| `sparse` | no | Enable GNU tar sparse-file detection for TAR-family archive creation |
 | `creates` | no | Skip the operation when this path already exists |
 | `delete_source` | no | Delete all sources after a successful, verified operation |
 | `include` | no | Relative paths or glob patterns; only with one directory source |
@@ -98,6 +100,22 @@ Without `creates`, an executed archive or extraction operation reports `changed:
 ```
 
 Each source is stored under its base name. Base names must be unique, source paths must not overlap, and `dest` must not be inside any source. Multiple sources are intentionally limited to TAR-family formats; ZIP lists are rejected to avoid surprising path layouts.
+
+### Archive a sparse virtual disk
+
+```yaml
+- name: Archive a sparse virtual disk image
+  mraibo.yacompress.multi_archive:
+    source: /var/lib/libvirt/images/server.raw
+    dest: /srv/backups/server.raw.tar.zst
+    state: archived
+    sparse: true
+    compression_level: 1
+    threads: auto
+    verify_archive: true
+```
+
+`sparse` is supported for TAR-family creation and is intentionally rejected for ZIP and extraction.
 
 ### Limit pigz CPU use
 
@@ -141,6 +159,7 @@ Successful archive creation returns:
 
 - `compression_used`
 - `threads_used`
+- `sparse_used`
 - `compression_level_used`
 - `elapsed_seconds`
 - `source_bytes`
@@ -176,6 +195,8 @@ Every pull request runs:
 
 The SUSE container test is a useful compatibility signal, but it does not replace validation on the exact SLES service pack, repositories, Python, Ansible, storage, and security policy used in production.
 
+A separate storage workflow validates a sparse file larger than 5 GiB, replacement of an existing archive, extraction, restored sparse allocation, and cleanup on a separate tmpfs destination. See [`docs/ENTERPRISE_STORAGE.md`](docs/ENTERPRISE_STORAGE.md) for real NFS, SELinux enforcing, FIPS, and clustered-filesystem validation.
+
 ## Benchmarking
 
 A reproducible comparison with `community.general.archive` is included. It generates large-file, many-small-file, and mixed datasets, validates each archive, and writes raw CSV plus a Markdown summary.
@@ -197,6 +218,7 @@ python3 tests/test_multi_archive.py
 python3 tests/test_failure_paths.py
 python3 tests/test_formats_performance.py
 python3 tests/test_multiple_sources.py
+python3 tests/test_sparse.py
 ANSIBLE_LIBRARY=. ansible-playbook -i localhost, -c local tests.yml
 
 # Run from an ansible_collections/mraibo/yacompress checkout:
