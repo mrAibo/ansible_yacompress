@@ -60,7 +60,16 @@ jobs:
           ln -s "$GITHUB_WORKSPACE" /tmp/ansible_collections/mraibo/yacompress
       - name: Official ansible-test sanity
         working-directory: /tmp/ansible_collections/mraibo/yacompress
-        run: ansible-test sanity --python 3.12
+        shell: bash
+        run: |
+          set -o pipefail
+          ansible-test sanity --python 3.12 2>&1 | tee "$GITHUB_WORKSPACE/sanity.log"
+      - name: Upload sanity diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sanity-diagnostics
+          path: sanity.log
       - name: Official ansible-test integration
         working-directory: /tmp/ansible_collections/mraibo/yacompress
         run: ansible-test integration --python 3.12 multi_archive
