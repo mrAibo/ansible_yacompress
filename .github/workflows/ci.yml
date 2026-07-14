@@ -21,7 +21,7 @@ jobs:
           sudo apt-get install -y -qq pigz zip unzip bzip2 xz-utils zstd
           python3 -m pip install --disable-pip-version-check -q ansible-core
       - name: Compile
-        run: python3 -m py_compile plugins/modules/multi_archive.py scripts/release.py tests/test_multi_archive.py tests/test_failure_paths.py tests/test_formats_performance.py tests/test_multiple_sources.py tests/test_sparse.py tests/test_release.py
+        run: python3 -m py_compile plugins/modules/multi_archive.py plugins/modules/archive_verify.py scripts/release.py tests/test_multi_archive.py tests/test_failure_paths.py tests/test_formats_performance.py tests/test_multiple_sources.py tests/test_sparse.py tests/test_release.py tests/test_archive_verify.py
       - name: Behavior tests
         run: python3 tests/test_multi_archive.py
       - name: Failure-path tests
@@ -32,6 +32,8 @@ jobs:
         run: python3 tests/test_multiple_sources.py
       - name: Sparse-file tests
         run: python3 tests/test_sparse.py
+      - name: Archive verification tests
+        run: python3 tests/test_archive_verify.py
       - name: Release metadata tests
         shell: bash
         run: |
@@ -52,7 +54,9 @@ jobs:
           test -n "$archive"
           ansible-galaxy collection install "$archive" -p collections
       - name: Collection documentation
-        run: ANSIBLE_COLLECTIONS_PATH="$PWD/collections" ansible-doc mraibo.yacompress.multi_archive >/dev/null
+        run: |
+          ANSIBLE_COLLECTIONS_PATH="$PWD/collections" ansible-doc mraibo.yacompress.multi_archive >/dev/null
+          ANSIBLE_COLLECTIONS_PATH="$PWD/collections" ansible-doc mraibo.yacompress.archive_verify >/dev/null
       - name: Collection smoke test
         run: ANSIBLE_COLLECTIONS_PATH="$PWD/collections" ANSIBLE_NOCOLOR=1 ansible-playbook -i localhost, -c local tests/collection_smoke.yml
 
@@ -89,4 +93,4 @@ jobs:
           path: sanity.log
       - name: Official ansible-test integration
         working-directory: /tmp/ansible_collections/mraibo/yacompress
-        run: ansible-test integration --python 3.12 multi_archive
+        run: ansible-test integration --python 3.12 multi_archive archive_verify
