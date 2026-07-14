@@ -310,7 +310,7 @@ def _build_archive_command(module, source, dest, fmt, compression, include, excl
         cwd = os.path.dirname(source)
         names = [os.path.basename(source) or '.']
     names = [('./' + name) if name.startswith('-') else name for name in names]
-    cmd = [zip_bin, '-r', dest] + names
+    cmd = [zip_bin, '-q', '-r', dest] + names
     for pattern in exclude:
         cmd += ['-x', pattern]
     return cmd, used, cwd
@@ -334,11 +334,14 @@ def _temporary_archive(parent, fmt):
     return directory, os.path.join(directory, 'archive' + suffix)
 
 
-def _verify_archive(module, path, fmt):
+def _verify_archive(module, path, fmt, compression_used):
     if fmt == 'zip':
         _run(module, [module.get_bin_path('zip', required=True), '-T', path])
+    elif fmt == 'tar.gz':
+        executable = 'pigz' if compression_used == 'pigz' else 'gzip'
+        _run(module, [module.get_bin_path(executable, required=True), '-t', path])
     else:
-        _run(module, [module.get_bin_path('tar', required=True), '-tf', path])
+        _run(module, [module.get_bin_path('bzip2', required=True), '-t', path])
 
 
 def _skip_if_created(module, params):
@@ -379,7 +382,7 @@ def archive(module, **params):
         command[command.index(dest)] = temporary
         _run(module, command, cwd=cwd)
         if params['delete_source']:
-            _verify_archive(module, temporary, fmt)
+            _verify_archive(module, temporary, fmt, used)
         try:
             module.atomic_move(temporary, dest)
         except Exception as exc:
