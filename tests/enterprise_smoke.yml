@@ -1,0 +1,116 @@
+---
+- name: Validate yacompress on an enterprise Linux baseline
+  hosts: localhost
+  gather_facts: false
+  vars:
+    root: /tmp/yacompress-enterprise-smoke
+  tasks:
+    - name: Reset test directory
+      ansible.builtin.file:
+        path: "{{ root }}"
+        state: absent
+
+    - name: Create source directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: "0755"
+      loop:
+        - "{{ root }}/config"
+        - "{{ root }}/data"
+
+    - name: Write source files
+      ansible.builtin.copy:
+        dest: "{{ item.dest }}"
+        content: "{{ item.content }}"
+        mode: "0644"
+      loop:
+        - { dest: "{{ root }}/config/app.conf", content: "enabled=true\n" }
+        - { dest: "{{ root }}/data/payload.txt", content: "enterprise archive payload\n" }
+
+    - name: Create verified multi-source zstd archive
+      mraibo.yacompress.multi_archive:
+        source:
+          - "{{ root }}/config"
+          - "{{ root }}/data"
+        dest: "{{ root }}/bundle.tar.zst"
+        state: archived
+        compression_level: 3
+        threads: 1
+        verify_archive: true
+      register: zstd_result
+
+    - name: Validate zstd metadata
+      ansible.builtin.assert:
+        that:
+          - zstd_result.changed
+          - zstd_result.compression_used == 'zstd'
+          - zstd_result.archive_bytes | int > 0
+          - zstd_result.source_bytes | int > 0
+
+    - name: Create portable gzip archive with automatic backend selection
+      mraibo.yacompress.multi_archive:
+        source: "{{ root }}/data"
+        dest: "{{ root }}/data.tar.gz"
+        state: archived
+        compression: auto
+        compression_level: 3
+        verify_archive: true
+      register: gzip_result
+
+    - name: Validate automatic gzip backend
+      ansible.builtin.assert:
+        that:
+          - gzip_result.compression_used in ['gzip', 'pigz']
+          - gzip_result.archive_bytes | int > 0
+
+    - name: Create xz archive
+      mraibo.yacompress.multi_archive:
+        source: "{{ root }}/config"
+        dest: "{{ root }}/config.tar.xz"
+        state: archived
+        compression_level: 1
+        threads: 1
+        verify_archive: true
+
+    - name: Create ZIP archive
+      mraibo.yacompress.multi_archive:
+        source: "{{ root }}/config"
+        dest: "{{ root }}/config.zip"
+        state: archived
+        format: zip
+        verify_archive: true
+
+    - name: Extract zstd archive
+      mraibo.yacompress.multi_archive:
+        source: "{{ root }}/bundle.tar.zst"
+        dest: "{{ root }}/restored"
+        state: unarchived
+
+    - name: Read restored files
+      ansible.builtin.slurp:
+        src: "{{ item }}"
+      loop:
+        - "{{ root }}/restored/config/app.conf"
+        - "{{ root }}/restored/data/payload.txt"
+      register: restored
+
+    - name: Verify restored content
+      ansible.builtin.assert:
+        that:
+          - restored.results[0].content | b64decode == 'enabled=true\n'
+          - restored.results[1].content | b64decode == 'enterprise archive payload\n'
+
+    - name: Predict archive creation in check mode
+      mraibo.yacompress.multi_archive:
+        source: "{{ root }}/config"
+        dest: "{{ root }}/check-only.tar.zst"
+        state: archived
+      check_mode: true
+      register: check_result
+
+    - name: Verify check mode result
+      ansible.builtin.assert:
+        that:
+          - check_result.changed
+          - not lookup('ansible.builtin.fileglob', root + '/check-only.tar.zst', wantlist=true)
