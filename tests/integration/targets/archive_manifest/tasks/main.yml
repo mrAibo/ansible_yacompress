@@ -1,0 +1,115 @@
+---
+- name: Create archive_manifest test directory
+  ansible.builtin.tempfile:
+    state: directory
+    suffix: archive-manifest
+  register: archive_manifest_temp
+
+- name: Create source directory
+  ansible.builtin.file:
+    path: "{{ archive_manifest_temp.path }}/source"
+    state: directory
+    mode: "0700"
+
+- name: Create source files
+  ansible.builtin.copy:
+    dest: "{{ archive_manifest_temp.path }}/source/{{ item.name }}"
+    content: "{{ item.content }}\n"
+    mode: "0600"
+  loop:
+    - {name: one.txt, content: one}
+    - {name: two.txt, content: two}
+
+- name: Preview manifest creation
+  mraibo.yacompress.archive_manifest:
+    source: "{{ archive_manifest_temp.path }}/source"
+    manifest: "{{ archive_manifest_temp.path }}/manifest.json"
+  check_mode: true
+  register: manifest_preview
+
+- name: Assert preview does not write
+  ansible.builtin.assert:
+    that:
+      - manifest_preview is changed
+      - manifest_preview.entries_count == 2
+
+- name: Check manifest is absent after preview
+  ansible.builtin.stat:
+    path: "{{ archive_manifest_temp.path }}/manifest.json"
+  register: manifest_after_preview
+
+- name: Assert preview changed no files
+  ansible.builtin.assert:
+    that:
+      - not manifest_after_preview.stat.exists
+
+- name: Create manifest
+  mraibo.yacompress.archive_manifest:
+    source: "{{ archive_manifest_temp.path }}/source"
+    manifest: "{{ archive_manifest_temp.path }}/manifest.json"
+  register: manifest_created
+
+- name: Assert manifest creation
+  ansible.builtin.assert:
+    that:
+      - manifest_created is changed
+      - manifest_created.entries_count == 2
+      - manifest_created.total_bytes > 0
+      - manifest_created.manifest_sha256 | length == 64
+
+- name: Create manifest again
+  mraibo.yacompress.archive_manifest:
+    source: "{{ archive_manifest_temp.path }}/source"
+    manifest: "{{ archive_manifest_temp.path }}/manifest.json"
+  register: manifest_second
+
+- name: Assert manifest creation is idempotent
+  ansible.builtin.assert:
+    that:
+      - manifest_second is not changed
+
+- name: Verify manifest
+  mraibo.yacompress.archive_manifest:
+    source: "{{ archive_manifest_temp.path }}/source"
+    manifest: "{{ archive_manifest_temp.path }}/manifest.json"
+    state: verified
+  register: manifest_verified
+
+- name: Assert valid manifest
+  ansible.builtin.assert:
+    that:
+      - manifest_verified is not changed
+      - manifest_verified.valid
+      - manifest_verified.mismatches | length == 0
+
+- name: Change one source file
+  ansible.builtin.copy:
+    dest: "{{ archive_manifest_temp.path }}/source/one.txt"
+    content: "changed content\n"
+    mode: "0600"
+
+- name: Add unexpected file
+  ansible.builtin.copy:
+    dest: "{{ archive_manifest_temp.path }}/source/three.txt"
+    content: "three\n"
+    mode: "0600"
+
+- name: Inspect mismatches without failing
+  mraibo.yacompress.archive_manifest:
+    source: "{{ archive_manifest_temp.path }}/source"
+    manifest: "{{ archive_manifest_temp.path }}/manifest.json"
+    state: verified
+    fail_on_mismatch: false
+  register: manifest_invalid
+
+- name: Assert mismatch reporting
+  ansible.builtin.assert:
+    that:
+      - manifest_invalid is not changed
+      - not manifest_invalid.valid
+      - manifest_invalid.mismatches | length == 2
+
+- name: Remove archive_manifest test directory
+  ansible.builtin.file:
+    path: "{{ archive_manifest_temp.path }}"
+    state: absent
