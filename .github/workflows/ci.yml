@@ -21,7 +21,7 @@ jobs:
           sudo apt-get install -y -qq pigz zip unzip bzip2 xz-utils zstd
           python3 -m pip install --disable-pip-version-check -q ansible-core
       - name: Compile
-        run: python3 -m py_compile plugins/modules/multi_archive.py tests/test_multi_archive.py tests/test_failure_paths.py tests/test_formats_performance.py tests/test_multiple_sources.py tests/test_sparse.py
+        run: python3 -m py_compile plugins/modules/multi_archive.py scripts/release.py tests/test_multi_archive.py tests/test_failure_paths.py tests/test_formats_performance.py tests/test_multiple_sources.py tests/test_sparse.py tests/test_release.py
       - name: Behavior tests
         run: python3 tests/test_multi_archive.py
       - name: Failure-path tests
@@ -32,6 +32,14 @@ jobs:
         run: python3 tests/test_multiple_sources.py
       - name: Sparse-file tests
         run: python3 tests/test_sparse.py
+      - name: Release metadata tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tests/test_release.py
+          version="$(python3 -c "from pathlib import Path; from scripts.release import read_collection_version; print(read_collection_version(Path('galaxy.yml')))")"
+          python3 scripts/release.py "v$version" --notes-output /tmp/release-notes.md
+          test -s /tmp/release-notes.md
       - name: Legacy module documentation
         run: ANSIBLE_LIBRARY=. ansible-doc -t module multi_archive >/dev/null
       - name: Legacy Ansible smoke test
