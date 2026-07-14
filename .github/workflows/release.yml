@@ -1,0 +1,142 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag, for example v1.5.0
+        required: true
+        type: string
+      create_release:
+        description: Create or update the GitHub Release
+        required: true
+        default: false
+        type: boolean
+      publish_galaxy:
+        description: Publish the built artifact to Ansible Galaxy
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'push' && github.ref_name || inputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install release requirements
+        run: python3 -m pip install --disable-pip-version-check -q ansible-core
+
+      - name: Validate release metadata
+        id: metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tests/test_release.py
+          archive_name="$(python3 scripts/release.py "$RELEASE_TAG" --notes-output release-notes.md)"
+          echo "archive_name=$archive_name" >> "$GITHUB_OUTPUT"
+
+      - name: Build collection
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build collections
+          ansible-galaxy collection build --output-path build
+          archive="build/${{ steps.metadata.outputs.archive_name }}"
+          test -f "$archive"
+          ansible-galaxy collection install "$archive" -p collections
+
+      - name: Smoke-test built collection
+        env:
+          ANSIBLE_COLLECTIONS_PATH: ${{ github.workspace }}/collections
+          ANSIBLE_NOCOLOR: '1'
+        run: |
+          ansible-doc mraibo.yacompress.multi_archive >/dev/null
+          ansible-playbook -i localhost, -c local tests/collection_smoke.yml
+
+      - name: Generate checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd build
+          sha256sum "${{ steps.metadata.outputs.archive_name }}" > SHA256SUMS
+
+      - name: Upload release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: yacompress-${{ env.RELEASE_TAG }}
+          path: |
+            build/${{ steps.metadata.outputs.archive_name }}
+            build/SHA256SUMS
+            release-notes.md
+          if-no-files-found: error
+          retention-days: 30
+
+  github-release:
+    needs: build
+    if: github.event_name == 'push' || inputs.create_release
+    runs-on: ubuntu-24.04
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: ${{ github.event_name == 'push' && github.ref_name || inputs.tag }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: yacompress-${{ env.RELEASE_TAG }}
+          path: release
+
+      - name: Create or update GitHub Release
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="$(find release -maxdepth 1 -name 'mraibo-yacompress-*.tar.gz' -print -quit)"
+          test -n "$archive"
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" "$archive" release/SHA256SUMS --clobber
+          else
+            gh release create "$RELEASE_TAG" \
+              "$archive" release/SHA256SUMS \
+              --verify-tag \
+              --title "mraibo.yacompress ${RELEASE_TAG#v}" \
+              --notes-file release/release-notes.md
+          fi
+
+  galaxy:
+    needs: build
+    if: github.event_name == 'workflow_dispatch' && inputs.publish_galaxy
+    runs-on: ubuntu-24.04
+    environment: galaxy
+    env:
+      RELEASE_TAG: ${{ inputs.tag }}
+      GALAXY_TOKEN: ${{ secrets.ANSIBLE_GALAXY_TOKEN }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: yacompress-${{ env.RELEASE_TAG }}
+          path: release
+
+      - name: Publish to Ansible Galaxy
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$GALAXY_TOKEN" || {
+            echo 'ANSIBLE_GALAXY_TOKEN is not configured in the galaxy environment' >&2
+            exit 1
+          }
+          python3 -m pip install --disable-pip-version-check -q ansible-core
+          archive="$(find release -maxdepth 1 -name 'mraibo-yacompress-*.tar.gz' -print -quit)"
+          test -n "$archive"
+          ansible-galaxy collection publish "$archive" --token "$GALAXY_TOKEN"
