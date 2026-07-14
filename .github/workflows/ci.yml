@@ -54,10 +54,10 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq pigz zip unzip bzip2 xz-utils zstd
           python3 -m pip install --disable-pip-version-check -q ansible-core
-      - name: Prepare collection path
+      - name: Prepare physical collection layout
         run: |
-          mkdir -p /tmp/ansible_collections/mraibo
-          ln -s "$GITHUB_WORKSPACE" /tmp/ansible_collections/mraibo/yacompress
+          mkdir -p /tmp/ansible_collections/mraibo/yacompress
+          cp -a "$GITHUB_WORKSPACE/." /tmp/ansible_collections/mraibo/yacompress/
       - name: Official ansible-test sanity
         working-directory: /tmp/ansible_collections/mraibo/yacompress
         shell: bash
