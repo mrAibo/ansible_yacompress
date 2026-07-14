@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 import importlib.util
 import os
 import shutil
@@ -153,7 +151,7 @@ class FormatPerformanceTests(unittest.TestCase):
 
     @unittest.skipUnless(shutil.which('pigz'), 'pigz is required')
     def test_pigz_explicit_threads_and_level(self):
-        command, used, threads, _ = multi_archive._build_archive_command(
+        command, used, threads, archive_cwd = multi_archive._build_archive_command(
             self.module,
             str(self.source),
             str(self.root / 'data.tar.gz'),
@@ -166,6 +164,7 @@ class FormatPerformanceTests(unittest.TestCase):
         )
         self.assertEqual(used, 'pigz')
         self.assertEqual(threads, 2)
+        self.assertIsNone(archive_cwd)
         compressor = command[command.index('-I') + 1]
         self.assertIn('-p 2', compressor)
         self.assertIn('-3', compressor)
