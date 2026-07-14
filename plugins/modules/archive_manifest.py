@@ -234,7 +234,7 @@ def verify_manifest(source, manifest_path, data):
     if source_type != data['source_type']:
         mismatches.append('source type changed: expected %s, found %s' % (data['source_type'], source_type))
 
-    current = {relative: path for relative, path in files}
+    current = dict(files)
     expected = {entry['path']: entry for entry in data['entries']}
     for relative in sorted(expected):
         path = current.get(relative)
