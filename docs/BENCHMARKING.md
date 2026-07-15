@@ -89,18 +89,48 @@ For credible published results:
 - distinguish warm-cache and cold-cache tests;
 - do not compare different compression levels without saying so.
 
-## Reference acceptance run
+## CachyOS reference run
 
-A real-host acceptance run on CachyOS used Linux 7.1.3, `ansible-core` 2.19.11, GNU tar 1.35, zstd 1.5.7, xz 5.8.3, and pigz 2.8. The benchmark used 512 MiB datasets, 10,000 small files, and three iterations.
+A real-host acceptance run used:
+
+- CachyOS with Linux 7.1.3;
+- `ansible-core` 2.19.11;
+- GNU tar 1.35;
+- zstd 1.5.7;
+- xz 5.8.3;
+- pigz 2.8;
+- 512 MiB generated datasets;
+- 10,000 files in the small-file dataset;
+- three measured iterations.
+
+| Dataset | Variant | Mean seconds | Mean MiB/s | Compression ratio | Archive MiB |
+|---|---|---:|---:|---:|---:|
+| large-compressible | community-gzip | 2.374 | 215.9 | 0.0024 | 1.24 |
+| large-compressible | yacompress-pigz | 1.033 | 495.4 | 0.0060 | 3.08 |
+| large-compressible | yacompress-xz | 2.344 | 218.4 | 0.0002 | 0.08 |
+| large-compressible | yacompress-zstd | 1.053 | 486.4 | 0.0001 | 0.05 |
+| many-small-files | community-gzip | 7.479 | 0.2 | 0.1668 | 0.23 |
+| many-small-files | yacompress-pigz | 0.821 | 1.7 | 0.0989 | 0.14 |
+| many-small-files | yacompress-xz | 0.866 | 1.6 | 0.0198 | 0.03 |
+| many-small-files | yacompress-zstd | 0.818 | 1.7 | 0.0451 | 0.06 |
+| mixed-data | community-gzip | 2.446 | 209.9 | 0.0024 | 1.25 |
+| mixed-data | yacompress-pigz | 1.040 | 493.4 | 0.0060 | 3.09 |
+| mixed-data | yacompress-xz | 2.350 | 218.4 | 0.0002 | 0.08 |
+| mixed-data | yacompress-zstd | 1.033 | 496.9 | 0.0001 | 0.05 |
 
 Observed on that host:
 
-- YaCompress zstd delivered approximately 490 MiB/s on the large compressible dataset;
-- `community.general.archive` gzip delivered approximately 210 MiB/s with a similar compression ratio;
-- on the 10,000-small-file dataset, the measured community gzip case took about 7.5 seconds versus about 0.8 seconds for the compared YaCompress case;
-- xz traded substantially lower throughput for a smaller archive.
+- pigz was approximately 2.30× faster than community gzip on `large-compressible` and 2.35× faster on `mixed-data`;
+- zstd was approximately 2.25× faster than community gzip on `large-compressible` and 2.41× faster on `mixed-data`;
+- the small-file community case took 7.479 seconds, versus 0.818–0.866 seconds for the YaCompress cases, a wall-clock difference of approximately 8.6–9.1×;
+- zstd produced the smallest archive for the two data-heavy generated datasets;
+- xz produced the smallest archive for the many-small-files dataset;
+- xz was approximately 2.2–2.3× slower than zstd on the two 512 MiB data-heavy datasets;
+- pigz provided the fastest gzip-compatible result, but its output was larger on these highly compressible generated datasets.
 
-These numbers document one reproducible host run, not a universal guarantee. Raw CSV and Markdown results should accompany any published comparison.
+These generated inputs are intentionally synthetic and extremely compressible. The tiny output sizes must not be generalized to databases, media, encrypted data, or already-compressed production content. This table documents one reproducible host run, not a universal guarantee.
+
+The full acceptance record is available in [`ACCEPTANCE_TESTING.md`](ACCEPTANCE_TESTING.md).
 
 ## Interpreting results
 
@@ -108,7 +138,7 @@ A faster compressor is not automatically the best choice:
 
 - `tar.zst` is generally the first candidate for frequent Linux backups because it balances speed, parallelism, and extraction performance.
 - `tar.gz` with pigz is useful when gzip compatibility is required.
-- `tar.xz` targets compact long-term archives where creation speed matters less.
+- `tar.xz` targets compact long-term archives where creation speed matters less, but it does not guarantee the smallest output for every dataset.
 - plain `tar` is appropriate when the source is already compressed.
 - ZIP is mainly a compatibility format and is not part of the comparative benchmark matrix.
 
