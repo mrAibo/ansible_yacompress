@@ -19,32 +19,24 @@ jobs:
 
       - name: Install test requirements
         run: |
-          sudo apt-get update
-          sudo apt-get install -y python3-venv tar gzip pigz bzip2 xz-utils zstd zip unzip
-          python3 -m venv /tmp/yacompress-storage-venv
-          /tmp/yacompress-storage-venv/bin/pip install --disable-pip-version-check ansible-core
-
-      - name: Build and install collection
-        run: |
-          . /tmp/yacompress-storage-venv/bin/activate
-          rm -rf /tmp/yacompress-storage-build /tmp/yacompress-storage-collections
-          mkdir -p /tmp/yacompress-storage-build /tmp/yacompress-storage-collections
-          ansible-galaxy collection build --output-path /tmp/yacompress-storage-build
-          archive=$(find /tmp/yacompress-storage-build -maxdepth 1 -name 'mraibo-yacompress-*.tar.gz' -print -quit)
-          test -n "$archive"
-          ansible-galaxy collection install "$archive" -p /tmp/yacompress-storage-collections
+          sudo apt-get update -qq >/dev/null
+          sudo apt-get install -y -qq python3-venv tar gzip pigz bzip2 xz-utils zstd zip unzip >/dev/null
 
       - name: Run sparse unit tests
-        run: |
-          . /tmp/yacompress-storage-venv/bin/activate
-          python tests/test_sparse.py
+        run: python3 tests/test_sparse.py
 
-      - name: Validate large sparse file on separate tmpfs destination
+      - name: Validate host script with an inherited collection path
         run: |
-          . /tmp/yacompress-storage-venv/bin/activate
-          rm -rf /dev/shm/yacompress-storage
-          mkdir -p /dev/shm/yacompress-storage
-          ANSIBLE_COLLECTIONS_PATH=/tmp/yacompress-storage-collections \
-          ANSIBLE_NOCOLOR=1 \
-          ansible-playbook -i localhost, -c local tests/storage_smoke.yml \
-            -e dest_root=/dev/shm/yacompress-storage
+          rm -rf /dev/shm/yacompress-storage /tmp/yacompress-inherited-collections
+          mkdir -p /dev/shm/yacompress-storage /tmp/yacompress-inherited-collections
+          ANSIBLE_COLLECTIONS_PATH=/tmp/yacompress-inherited-collections \
+          ./tests/run_host_storage_validation.sh /dev/shm/yacompress-storage \
+            > /tmp/yacompress-host-validation.log 2>&1
+
+      - name: Upload host validation diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: host-validation-log
+          path: /tmp/yacompress-host-validation.log
+          if-no-files-found: error

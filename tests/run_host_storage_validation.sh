@@ -55,7 +55,8 @@ mkdir -p "$build_dir" "$collections_dir"
 "$venv/bin/ansible-galaxy" collection build --output-path "$build_dir"
 archive=$(find "$build_dir" -maxdepth 1 -name 'mraibo-yacompress-*.tar.gz' -print -quit)
 [ -n "$archive" ]
-"$venv/bin/ansible-galaxy" collection install "$archive" -p "$collections_dir"
+ANSIBLE_COLLECTIONS_PATH="$collections_dir" \
+"$venv/bin/ansible-galaxy" collection install "$archive" -p "$collections_dir" --force
 
 ANSIBLE_COLLECTIONS_PATH="$collections_dir" \
 ANSIBLE_NOCOLOR=1 \

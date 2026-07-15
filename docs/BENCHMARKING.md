@@ -15,6 +15,8 @@ The default matrix includes:
 
 Every produced archive is opened with `tar -tf` before its result is recorded.
 
+The benchmark selects pigz explicitly. The `multi_archive` module keeps `compression: none` as its backward-compatible default for `tar.gz`, which uses gzip. Set `compression: auto` to prefer pigz and fall back to gzip, or set `compression: pigz` to require pigz.
+
 ## Datasets
 
 The runner generates three temporary datasets:
@@ -31,7 +33,9 @@ Install the collections and native tools first:
 
 ```bash
 ansible-galaxy collection build --output-path build
-ansible-galaxy collection install build/mraibo-yacompress-1.4.0.tar.gz -p collections
+archive=$(find build -maxdepth 1 -name 'mraibo-yacompress-*.tar.gz' -print -quit)
+test -n "$archive"
+ansible-galaxy collection install "$archive" -p collections --force
 ansible-galaxy collection install community.general -p collections
 ```
 
@@ -84,6 +88,19 @@ For credible published results:
 - keep raw CSV results available;
 - distinguish warm-cache and cold-cache tests;
 - do not compare different compression levels without saying so.
+
+## Reference acceptance run
+
+A real-host acceptance run on CachyOS used Linux 7.1.3, `ansible-core` 2.19.11, GNU tar 1.35, zstd 1.5.7, xz 5.8.3, and pigz 2.8. The benchmark used 512 MiB datasets, 10,000 small files, and three iterations.
+
+Observed on that host:
+
+- YaCompress zstd delivered approximately 490 MiB/s on the large compressible dataset;
+- `community.general.archive` gzip delivered approximately 210 MiB/s with a similar compression ratio;
+- on the 10,000-small-file dataset, the measured community gzip case took about 7.5 seconds versus about 0.8 seconds for the compared YaCompress case;
+- xz traded substantially lower throughput for a smaller archive.
+
+These numbers document one reproducible host run, not a universal guarantee. Raw CSV and Markdown results should accompany any published comparison.
 
 ## Interpreting results
 
