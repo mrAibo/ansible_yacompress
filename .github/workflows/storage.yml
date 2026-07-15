@@ -29,5 +29,10 @@ jobs:
         run: |
           rm -rf /dev/shm/yacompress-storage /tmp/yacompress-inherited-collections
           mkdir -p /dev/shm/yacompress-storage /tmp/yacompress-inherited-collections
-          ANSIBLE_COLLECTIONS_PATH=/tmp/yacompress-inherited-collections \
-          ./tests/run_host_storage_validation.sh /dev/shm/yacompress-storage
+          if ! ANSIBLE_COLLECTIONS_PATH=/tmp/yacompress-inherited-collections \
+              ./tests/run_host_storage_validation.sh /dev/shm/yacompress-storage \
+              > /tmp/yacompress-host-validation.log 2>&1; then
+              tail -n 120 /tmp/yacompress-host-validation.log
+              exit 1
+          fi
+          cat /tmp/yacompress-host-validation.log
