@@ -109,6 +109,15 @@ class MultiArchiveTests(unittest.TestCase):
         with self.assertRaises(FailResult):
             multi_archive._expand_includes(self.module, str(self.source), ['../escape'])
 
+    def test_exclude_patterns_reject_absolute_and_parent_traversal(self):
+        multi_archive._validate_patterns(
+            self.module, 'exclude', ['*.log', 'cache/**', 'dir/../dir/*.tmp']
+        )
+        for pattern in ['/etc/passwd', '../secret', 'cache/../../secret']:
+            with self.subTest(pattern=pattern):
+                with self.assertRaises(FailResult):
+                    multi_archive._validate_patterns(self.module, 'exclude', [pattern])
+
     def test_tar_rewrite_include_and_metrics(self):
         archive = self.root / 'archives' / 'all.tar.gz'
         first = call(multi_archive.archive, self.module, **self.params(archive))
