@@ -50,10 +50,19 @@ The modules remain separate so that creation, verification, checksumming, and de
 
 ## Quick start
 
-Install the Collection:
+Requires Ansible Core 2.15 or newer and the native tools for the selected format: `tar`, plus `gzip`/`pigz`, `bzip2`, `xz`, `zstd`, or `zip`/`unzip` as needed.
+
+Build and install directly from this repository before the Galaxy release:
 
 ```bash
-ansible-galaxy collection install mraibo.yacompress:1.6.0
+ansible-galaxy collection build --output-path build
+ansible-galaxy collection install build/mraibo-yacompress-*.tar.gz
+```
+
+After publication, install from Ansible Galaxy:
+
+```bash
+ansible-galaxy collection install mraibo.yacompress
 ```
 
 Create and validate a backup:
