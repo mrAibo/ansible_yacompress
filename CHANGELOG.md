@@ -10,20 +10,40 @@ All notable changes to this project are documented here.
 - `mraibo.yacompress.archive_rotate` for deterministic retention by count and age, with Check Mode previews, `min_keep`, path confinement, and symlink protection.
 - `mraibo.yacompress.archive_manifest` for deterministic, atomically written SHA-256 manifests covering one archive or a selected directory tree.
 - Detection of missing, changed, and unexpected files during manifest verification.
-- Detailed operational guides for archive verification, rotation, manifests, and the complete backup lifecycle.
+- Detailed operational guides for archive verification, rotation, manifests, performance, security, acceptance testing, and the complete backup lifecycle.
 - A runnable end-to-end workflow that creates, verifies, manifests, and rotates application backups.
+- Honest comparison with `community.general.archive`, direct shell commands, `ansible.builtin.unarchive`, and repository-based backup systems.
+- A practical FAQ, contributor workflow, architecture decisions, and project roadmap with explicit non-goals.
+- A reproducible benchmark framework and a documented CachyOS reference run.
+- An Ansible Galaxy release checklist for immutable, clean-install-verified publication.
+
+### Changed
+
+- README is now a project landing page with a source-build Quick Start that works before Galaxy publication.
+- Compression defaults and pigz selection are documented explicitly without changing existing playbook behavior.
+- Release and operational documentation now distinguish CI evidence, real-host acceptance evidence, and environment-specific validation.
+
+### Fixed
+
+- `run_host_storage_validation.sh` now isolates its collection path from an inherited external `ANSIBLE_COLLECTIONS_PATH`.
+- Absolute and parent-traversal `exclude` patterns are rejected before archive creation.
+- Benchmark build instructions no longer depend on a stale hard-coded archive version.
 
 ### Safety
 
 - Verification and manifest checks are read-only and report `changed: false`.
 - Rotation preserves at least one newest archive by default and never follows symbolic links.
 - Manifest paths are validated before use, and changed manifests are replaced atomically beside their destination.
+- Source, destination, include, exclude, and manifest path relationships are validated before native commands run.
 - The documented workflow rotates older recovery points only after the new archive passes structural and checksum verification.
+- Private vulnerability reports are accepted through GitHub Private Vulnerability Reporting.
 
 ### Quality
 
 - Unit and official `ansible-test integration` coverage for all four collection modules.
 - Continuous validation across modern, enterprise, and SUSE Linux matrices remains part of every pull request.
+- Real-host acceptance passed on CachyOS with `ansible-core 2.19.11`, including Check Mode, corruption detection, manifest mismatches, rotation, and a sparse-file round trip larger than 5 GiB.
+- The reference benchmark recorded zstd and pigz throughput gains over `community.general.archive` gzip on the tested host; the documentation explicitly limits those findings to the measured environment and datasets.
 
 ## 1.5.0 — 2026-07-14
 

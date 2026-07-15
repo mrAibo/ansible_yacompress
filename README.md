@@ -141,7 +141,7 @@ YaCompress is intentionally conservative around destructive operations:
 
 - Check Mode does not change the filesystem;
 - new archives and manifests are written beside the destination and replaced atomically;
-- unsafe source, destination, include, and manifest paths are rejected;
+- unsafe source, destination, include, exclude, and manifest paths are rejected;
 - verification, manifest discovery, and rotation do not follow symbolic links;
 - `delete_source: true` runs only after successful archive verification;
 - partial deletion failures report deleted and remaining paths;
@@ -171,6 +171,7 @@ Continuously tested families include Debian, Ubuntu, Fedora, Rocky Linux, AlmaLi
 
 - [`docs/WHY_YACOMPRESS.md`](docs/WHY_YACOMPRESS.md) — purpose, alternatives, honest capability comparison, and use-case boundaries
 - [`docs/BACKUP_WORKFLOW.md`](docs/BACKUP_WORKFLOW.md) — complete create → verify → manifest → rotate workflow
+- [`docs/FAQ.md`](docs/FAQ.md) — practical answers about formats, safety, performance, storage, and troubleshooting
 - [`examples/complete_backup.yml`](examples/complete_backup.yml) — runnable workflow example
 
 ### Module guides
@@ -179,12 +180,23 @@ Continuously tested families include Debian, Ubuntu, Fedora, Rocky Linux, AlmaLi
 - [`docs/ARCHIVE_MANIFEST.md`](docs/ARCHIVE_MANIFEST.md)
 - [`docs/ARCHIVE_ROTATE.md`](docs/ARCHIVE_ROTATE.md)
 
+### Design, security, and performance
+
+- [`docs/DESIGN_PHILOSOPHY.md`](docs/DESIGN_PHILOSOPHY.md) — architectural principles and tradeoffs
+- [`docs/PERFORMANCE.md`](docs/PERFORMANCE.md) — backend selection and production tuning
+- [`SECURITY.md`](SECURITY.md) — threat model and private vulnerability reporting
+- [`docs/SECURITY_CHECKLIST.md`](docs/SECURITY_CHECKLIST.md) — operator security checklist
+- [`docs/ACCEPTANCE_TESTING.md`](docs/ACCEPTANCE_TESTING.md) — real-host acceptance evidence and limits
+
 ### Operations and maintenance
 
 - [`docs/COMPATIBILITY.md`](docs/COMPATIBILITY.md) — tested systems and support boundaries
 - [`docs/ENTERPRISE_STORAGE.md`](docs/ENTERPRISE_STORAGE.md) — NFS, SELinux, FIPS, sparse files, and large-file validation
 - [`docs/BENCHMARKING.md`](docs/BENCHMARKING.md) — reproducible performance methodology
-- [`docs/RELEASING.md`](docs/RELEASING.md) — releases and Galaxy publication
+- [`docs/ROADMAP.md`](docs/ROADMAP.md) — direction, compatibility policy, and explicit non-goals
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) — contributor workflow and engineering rules
+- [`docs/RELEASING.md`](docs/RELEASING.md) — release process
+- [`docs/GALAXY_RELEASE_CHECKLIST.md`](docs/GALAXY_RELEASE_CHECKLIST.md) — final immutable-publication checklist
 
 ## Build from source
 
