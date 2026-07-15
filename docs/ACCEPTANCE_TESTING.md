@@ -34,16 +34,40 @@ The acceptance run exposed an environment-isolation bug in `tests/run_host_stora
 
 When the caller already exported `ANSIBLE_COLLECTIONS_PATH`, `ansible-galaxy collection install` could resolve an existing Collection outside the script's private validation directory and skip the intended installation. The subsequent playbook used the private directory and could not find the module.
 
-The host-validation script must therefore set `ANSIBLE_COLLECTIONS_PATH` explicitly for both Collection installation and playbook execution. Validation scripts should not depend on the caller having a clean shell environment.
+The host-validation script now sets `ANSIBLE_COLLECTIONS_PATH` explicitly for both Collection installation and playbook execution. CI also runs the validator with an intentionally inherited external Collection path so the regression remains covered.
 
-## Benchmark summary
+## Complete benchmark table
 
-The reference run used 512 MiB datasets, 10,000 small files, and three iterations. On that specific host:
+The reference run used 512 MiB datasets, 10,000 small files, and three measured iterations.
 
-- YaCompress zstd measured approximately 490 MiB/s;
-- `community.general.archive` gzip measured approximately 210 MiB/s at a similar compression ratio;
-- the 10,000-small-file community gzip case took about 7.5 seconds, versus about 0.8 seconds for the compared YaCompress case;
-- xz produced a better ratio at a substantial throughput cost.
+| Dataset | Variant | Mean seconds | Mean MiB/s | Compression ratio | Archive MiB |
+|---|---|---:|---:|---:|---:|
+| large-compressible | community-gzip | 2.374 | 215.9 | 0.0024 | 1.24 |
+| large-compressible | yacompress-pigz | 1.033 | 495.4 | 0.0060 | 3.08 |
+| large-compressible | yacompress-xz | 2.344 | 218.4 | 0.0002 | 0.08 |
+| large-compressible | yacompress-zstd | 1.053 | 486.4 | 0.0001 | 0.05 |
+| many-small-files | community-gzip | 7.479 | 0.2 | 0.1668 | 0.23 |
+| many-small-files | yacompress-pigz | 0.821 | 1.7 | 0.0989 | 0.14 |
+| many-small-files | yacompress-xz | 0.866 | 1.6 | 0.0198 | 0.03 |
+| many-small-files | yacompress-zstd | 0.818 | 1.7 | 0.0451 | 0.06 |
+| mixed-data | community-gzip | 2.446 | 209.9 | 0.0024 | 1.25 |
+| mixed-data | yacompress-pigz | 1.040 | 493.4 | 0.0060 | 3.09 |
+| mixed-data | yacompress-xz | 2.350 | 218.4 | 0.0002 | 0.08 |
+| mixed-data | yacompress-zstd | 1.033 | 496.9 | 0.0001 | 0.05 |
+
+## Interpretation of this run
+
+On this host:
+
+- YaCompress pigz was about 2.30× faster than community gzip on `large-compressible` and about 2.35× faster on `mixed-data`.
+- YaCompress zstd was about 2.25× faster than community gzip on `large-compressible` and about 2.41× faster on `mixed-data`.
+- On `many-small-files`, community gzip took 7.479 seconds, while the YaCompress cases completed in 0.818–0.866 seconds. The wall-clock difference was approximately 8.6–9.1×.
+- zstd produced the smallest archive in the `large-compressible` and `mixed-data` cases: approximately 0.05 MiB versus 0.08 MiB for xz.
+- xz produced the smallest archive in the `many-small-files` case: approximately 0.03 MiB versus 0.06 MiB for zstd.
+- xz was not consistently slower than community gzip in this run, but it was about 2.2–2.3× slower than zstd on the two 512 MiB data-heavy cases.
+- pigz maximized gzip-compatible throughput but produced larger archives than the other tested compressors on these highly compressible generated datasets.
+
+The generated datasets are deliberately synthetic. Extremely small output archives indicate highly repetitive input and must not be treated as representative of databases, media, encrypted data, or already-compressed production content.
 
 These are host-specific observations, not universal guarantees. Preserve raw CSV, exact commands, system metadata, cache conditions, and compressor versions whenever publishing results.
 
