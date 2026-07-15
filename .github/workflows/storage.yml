@@ -19,8 +19,8 @@ jobs:
 
       - name: Install test requirements
         run: |
-          sudo apt-get update
-          sudo apt-get install -y python3-venv tar gzip pigz bzip2 xz-utils zstd zip unzip
+          sudo apt-get update -qq >/dev/null
+          sudo apt-get install -y -qq python3-venv tar gzip pigz bzip2 xz-utils zstd zip unzip >/dev/null
 
       - name: Run sparse unit tests
         run: python3 tests/test_sparse.py
@@ -32,7 +32,7 @@ jobs:
           if ! ANSIBLE_COLLECTIONS_PATH=/tmp/yacompress-inherited-collections \
               ./tests/run_host_storage_validation.sh /dev/shm/yacompress-storage \
               > /tmp/yacompress-host-validation.log 2>&1; then
-              tail -n 120 /tmp/yacompress-host-validation.log
+              tail -n 80 /tmp/yacompress-host-validation.log
               exit 1
           fi
-          cat /tmp/yacompress-host-validation.log
+          tail -n 80 /tmp/yacompress-host-validation.log
