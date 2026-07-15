@@ -77,7 +77,9 @@ options:
     elements: str
     default: []
   exclude:
-    description: Archive path patterns to exclude while archiving.
+    description:
+      - Relative archive path patterns to exclude while archiving.
+      - Absolute paths and patterns that escape through C(..) are rejected.
     type: list
     elements: str
     default: []
@@ -285,7 +287,17 @@ def _validate(module, source, dest, state, include, exclude, fmt=None):
                 module.fail_json(msg="source paths must not overlap: %s and %s" % (left, right))
     if include and not os.path.isdir(sources[0]):
         module.fail_json(msg="include requires source to be a directory")
+    _validate_patterns(module, 'exclude', exclude)
     return sources
+
+
+def _validate_patterns(module, name, patterns):
+    for pattern in patterns:
+        if os.path.isabs(pattern):
+            module.fail_json(msg="%s entries must be relative: %s" % (name, pattern))
+        normalized = os.path.normpath(pattern)
+        if normalized == os.pardir or normalized.startswith(os.pardir + os.sep):
+            module.fail_json(msg="%s entry escapes source: %s" % (name, pattern))
 
 
 def _expand_includes(module, source, include):

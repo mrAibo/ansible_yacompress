@@ -71,6 +71,22 @@
           - restored.results[0].content | b64decode == 'enabled=true\n'
           - restored.results[1].content | b64decode == 'integration payload\n'
 
+    - name: Reject parent-traversal exclude pattern
+      mraibo.yacompress.multi_archive:
+        source: "{{ workspace.path }}/config"
+        dest: "{{ workspace.path }}/unsafe-exclude.tar.gz"
+        state: archived
+        exclude:
+          - ../outside
+      register: unsafe_exclude
+      ignore_errors: true
+
+    - name: Validate unsafe exclude rejection
+      ansible.builtin.assert:
+        that:
+          - unsafe_exclude is failed
+          - "'exclude entry escapes source' in unsafe_exclude.msg"
+
     - name: Predict archive creation in check mode
       mraibo.yacompress.multi_archive:
         source: "{{ workspace.path }}/config"
