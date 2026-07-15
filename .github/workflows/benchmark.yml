@@ -44,7 +44,9 @@ jobs:
         run: |
           mkdir -p build collections
           ansible-galaxy collection build --output-path build
-          ansible-galaxy collection install build/mraibo-yacompress-1.4.0.tar.gz -p collections
+          archive=$(find build -maxdepth 1 -name 'mraibo-yacompress-*.tar.gz' -print -quit)
+          test -n "$archive"
+          ansible-galaxy collection install "$archive" -p collections
           ansible-galaxy collection install community.general -p collections
 
       - name: Run benchmark
