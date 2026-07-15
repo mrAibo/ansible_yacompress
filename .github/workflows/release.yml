@@ -102,16 +102,20 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          archive="$(find release -maxdepth 1 -name 'mraibo-yacompress-*.tar.gz' -print -quit)"
+          archive="$(find release -type f -name 'mraibo-yacompress-*.tar.gz' -print -quit)"
+          checksum="$(find release -type f -name SHA256SUMS -print -quit)"
+          notes="$(find release -type f -name release-notes.md -print -quit)"
           test -n "$archive"
+          test -n "$checksum"
+          test -n "$notes"
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-            gh release upload "$RELEASE_TAG" "$archive" release/SHA256SUMS --clobber
+            gh release upload "$RELEASE_TAG" "$archive" "$checksum" --clobber
           else
             gh release create "$RELEASE_TAG" \
-              "$archive" release/SHA256SUMS \
+              "$archive" "$checksum" \
               --verify-tag \
               --title "mraibo.yacompress ${RELEASE_TAG#v}" \
-              --notes-file release/release-notes.md
+              --notes-file "$notes"
           fi
 
   galaxy:
@@ -137,6 +141,6 @@ jobs:
             exit 1
           }
           python3 -m pip install --disable-pip-version-check -q ansible-core
-          archive="$(find release -maxdepth 1 -name 'mraibo-yacompress-*.tar.gz' -print -quit)"
+          archive="$(find release -type f -name 'mraibo-yacompress-*.tar.gz' -print -quit)"
           test -n "$archive"
           ansible-galaxy collection publish "$archive" --token "$GALAXY_TOKEN"
