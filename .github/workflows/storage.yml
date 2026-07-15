@@ -29,10 +29,14 @@ jobs:
         run: |
           rm -rf /dev/shm/yacompress-storage /tmp/yacompress-inherited-collections
           mkdir -p /dev/shm/yacompress-storage /tmp/yacompress-inherited-collections
-          if ! ANSIBLE_COLLECTIONS_PATH=/tmp/yacompress-inherited-collections \
-              ./tests/run_host_storage_validation.sh /dev/shm/yacompress-storage \
-              > /tmp/yacompress-host-validation.log 2>&1; then
-              tail -n 80 /tmp/yacompress-host-validation.log
-              exit 1
-          fi
-          tail -n 80 /tmp/yacompress-host-validation.log
+          ANSIBLE_COLLECTIONS_PATH=/tmp/yacompress-inherited-collections \
+          ./tests/run_host_storage_validation.sh /dev/shm/yacompress-storage \
+            > /tmp/yacompress-host-validation.log 2>&1
+
+      - name: Upload host validation diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: host-validation-log
+          path: /tmp/yacompress-host-validation.log
+          if-no-files-found: error
